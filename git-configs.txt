@@ -2,7 +2,11 @@ Using Github:
 codecrafters submit pushes my code
 Before submitting do git commit -am "commit-log" to choose the message that will occur
 
+
+Adding a file:
+After adding a file do git add . before trying to commit
+
 Do:
-git push origin master
+git push origin master (runs the submission)
 git push github master (push changes to my github repository)
 (Combined is for synchronization)

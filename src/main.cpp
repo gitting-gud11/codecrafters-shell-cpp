@@ -12,9 +12,14 @@ int main() {
 
     std::string input;
     std::cin>>input;
+    if(input=="exit"){
+      exit(0);
+    }
+    else{
+      std::string command_failed=input+": command not found\n";
+      std::cerr<<command_failed;
+    }
 
-    std::string command_failed=input+": command not found\n";
-    std::cerr<<command_failed;
 
   }
 }
