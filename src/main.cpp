@@ -8,5 +8,10 @@ int main() {
 
   // TODO: Uncomment the code below to pass the first stage
   std::cout << "$ ";
-  "github";
+
+  std::string input;
+  std::cin>>input;
+
+  std::string command_failed=input+": command not found\n";
+  std::cerr<<command_failed;
 }
