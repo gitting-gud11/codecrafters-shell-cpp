@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include<sstream>
 
 int main() {
   // Flush after every std::cout / std:cerr
@@ -11,13 +12,21 @@ int main() {
     std::cout << "$ ";
 
     std::string input;
-    std::cin>>input;
-    if(input=="exit"){
+    std::getline(std::cin,input);
+    std::stringstream stream(input);
+    std::string token, segment;
+    stream >> token >> segment;
+
+    if(token=="exit"){
       exit(0);
     }
+    else if(token=="echo"){
+      std::cout<<segment<<"\n";
+    }
     else{
-      std::string command_failed=input+": command not found\n";
+      std::string command_failed=token+": command not found\n";
       std::cerr<<command_failed;
+
     }
 
 
