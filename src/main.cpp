@@ -3,6 +3,9 @@
 #include<sstream>
 #include<vector>
 #include<assert.h>
+#include<set>
+
+std::set<std::string> builtins={"echo","type","exit"};
 
 
 std::vector<std::string> parse_input(std::string & input){
@@ -48,6 +51,19 @@ int main() {
     }
     else if(command=="echo"){
       std::cout<<echo_output(tokens)<<"\n";
+    }
+    else if(command=="type"){
+      std::string arg_type;
+      if(tokens.size()>1){
+        arg_type=tokens[1];
+      }
+
+      if(builtins.contains(arg_type)){
+        std::cout<<arg_type<<" is a shell builtin\n";
+      }
+      else{
+        std::cout<<arg_type<<": not found\n";
+      }
     }
     else{
       std::string command_failed=command+": command not found\n";
