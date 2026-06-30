@@ -14,4 +14,6 @@ int main() {
 
   std::string command_failed=input+": command not found\n";
   std::cerr<<command_failed;
+
+  "test";
 }
