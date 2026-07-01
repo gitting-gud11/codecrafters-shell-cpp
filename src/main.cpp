@@ -128,6 +128,22 @@ inline void print_path(std::filesystem::path & input_path){
   std::cout<<(input_path.string())<<"\n";
 }
 
+void change_directory(std::vector<std::string> & tokens){
+
+  std::string updated_directory;
+
+  if(tokens.size()>1){
+    updated_directory=tokens[1];
+  }
+
+  if(std::filesystem::is_directory(updated_directory)){
+    std::filesystem::current_path(updated_directory);
+  }
+  else{
+    std::cout<<"cd: "<<updated_directory<<": No such file or directory\n";
+  }
+}
+
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -135,7 +151,7 @@ int main() {
 
   std::string path=std::string(std::getenv("PATH"));
 
-  std::set<std::string> builtins={"echo","type","exit","pwd"};
+  std::set<std::string> builtins={"cd","echo","exit","pwd","type"};
 
   while(1){
     std::cout << "$ ";
@@ -159,6 +175,9 @@ int main() {
     }
     else if(command=="type"){
       determine_type(tokens,path,builtins);
+    }
+    else if(command=="cd"){
+      change_directory(tokens);
     }
     else{
       //Want to check if I can execute the program
