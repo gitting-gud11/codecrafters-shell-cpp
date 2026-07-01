@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <filesystem>
@@ -7,6 +8,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include<sys/wait.h>
+#include<unistd.h>
 
 #ifdef _WIN32
 constexpr char os_pathsep=';';
@@ -36,7 +39,7 @@ inline std::string get_command(std::vector<std::string> & tokens){
   return command;
 }
 
-std::optional<std::string> find_path(std::string & file,std::string & path){
+std::optional<std::string> find_exec_path(std::string & file,std::string & path){
 
   std::stringstream stream(path);
   std::string buffer;
@@ -68,13 +71,56 @@ std::optional<std::string> find_path(std::string & file,std::string & path){
     return std::nullopt;
 }
 
-std:: string echo_output(std::vector<std::string> & tokens){
+inline void  echo_output(std::vector<std::string> & tokens){
+  //Need to look into how I parse quote characters might need to delimit those
   std::string buffer;
 
   for(size_t i=1;i<tokens.size();++i){buffer+=tokens[i];buffer.push_back(' ');}
 
-  return buffer;
+  std::cout<<buffer<<"\n";
+}
 
+void determine_type(std::vector<std::string> & tokens,std::string & path,std::set<std::string> & builtins){
+  std::string arg_type;
+
+  if(tokens.size()>1){
+    arg_type=tokens[1];
+  }
+
+  if(arg_type.empty()) return;
+
+  if(builtins.contains(arg_type)){
+    std::cout<<arg_type<<" is a shell builtin\n";
+    return;
+  }
+
+  std::optional<std::string> exec_path=find_exec_path(arg_type,path);
+  if(exec_path.has_value()){
+    std::cout<<arg_type<<" is "<<exec_path.value()<<"\n";
+  }
+  else{
+    std::cout<<arg_type<<": not found\n";
+  }
+}
+
+void run_program(std::vector<std::string> & tokens){
+  std::vector<const char*> argv(tokens.size()+1);
+
+  for(size_t i {};i<tokens.size();++i){
+    argv[i]=tokens[i].c_str();
+  }
+  argv[tokens.size()]=NULL;
+
+  pid_t pid=fork();
+
+  if(!pid){
+  //Child process
+    execvp(argv[0],const_cast<char* const*>(argv.data()));
+
+  }
+  else{
+    waitpid(pid,NULL,0);
+  }
 }
 
 int main() {
@@ -100,31 +146,23 @@ int main() {
       exit(0);
     }
     else if(command=="echo"){
-      std::cout<<echo_output(tokens)<<"\n";
+      echo_output(tokens);
     }
     else if(command=="type"){
-      std::string arg_type;
-      if(tokens.size()>1){
-        arg_type=tokens[1];
-      }
-
-      if(builtins.contains(arg_type)){
-        std::cout<<arg_type<<" is a shell builtin\n";
-        continue;
-      }
-
-      std::optional<std::string> returned_path=find_path(arg_type,path);
-      if(returned_path.has_value()){
-        std::cout<<arg_type<<" is "<<returned_path.value()<<"\n";
-      }
-      else{
-        std::cout<<arg_type<<": not found\n";
-      }
-      
+      determine_type(tokens,path,builtins);
     }
     else{
-      std::string command_failed=command+": command not found\n";
-      std::cout<<command_failed;
+      //Want to check if I can execute the program
+      //Might change to execv since I already have the path
+      std::optional<std::string> exec_path=find_exec_path(command,path);
+      if(exec_path.has_value()){
+        run_program(tokens);
+      }
+      else{
+        std::string command_failed=command+": command not found\n";
+        std::cout<<command_failed;
+
+      }
 
     }
 
