@@ -123,6 +123,11 @@ void run_program(std::vector<std::string> & tokens){
   }
 }
 
+void print_path(std::filesystem::path & input_path){
+
+  printf("%s\n",input_path.c_str());
+}
+
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -130,7 +135,7 @@ int main() {
 
   std::string path=std::string(std::getenv("PATH"));
 
-  std::set<std::string> builtins={"echo","type","exit"};
+  std::set<std::string> builtins={"echo","type","exit","pwd"};
 
   while(1){
     std::cout << "$ ";
@@ -147,6 +152,10 @@ int main() {
     }
     else if(command=="echo"){
       echo_output(tokens);
+    }
+    else if(command=="pwd"){
+     std::filesystem::path working_path=std::filesystem::current_path();
+     print_path(working_path);
     }
     else if(command=="type"){
       determine_type(tokens,path,builtins);
