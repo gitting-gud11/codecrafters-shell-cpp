@@ -118,7 +118,7 @@ int main() {
         std::cout<<arg_type<<" is "<<returned_path.value()<<"\n";
       }
       else{
-        std::cout<<arg_type<<": command not found\n";
+        std::cout<<arg_type<<": not found\n";
       }
       
     }
