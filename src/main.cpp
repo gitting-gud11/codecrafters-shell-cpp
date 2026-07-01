@@ -123,9 +123,9 @@ void run_program(std::vector<std::string> & tokens){
   }
 }
 
-void print_path(std::filesystem::path & input_path){
+inline void print_path(std::filesystem::path & input_path){
 
-  printf("%s\n",input_path.c_str());
+  std::cout<<(input_path.string())<<"\n";
 }
 
 int main() {
