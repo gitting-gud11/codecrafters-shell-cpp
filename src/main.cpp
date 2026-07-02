@@ -128,6 +128,13 @@ inline void print_path(std::filesystem::path & input_path){
   std::cout<<(input_path.string())<<"\n";
 }
 
+
+// inline std::string get_home_directory(void){
+//   const char* home_path=getenv("HOME");
+
+//   return std::string(home_path);
+// }
+
 void change_directory(std::vector<std::string> & tokens){
 
   std::string updated_directory;
@@ -135,6 +142,14 @@ void change_directory(std::vector<std::string> & tokens){
   if(tokens.size()>1){
     updated_directory=tokens[1];
   }
+
+  //Might need to strip whitespace to make this more robust
+  if(updated_directory.empty() ||(updated_directory=="~")){
+    std::string home_path=std::string(getenv("HOME"));
+    std::filesystem::current_path(home_path);
+    return;
+  }
+
 
   if(std::filesystem::is_directory(updated_directory)){
     std::filesystem::current_path(updated_directory);
