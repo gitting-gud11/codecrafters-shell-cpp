@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include<sys/wait.h>
+#include<system_error>
 #include<unistd.h>
 
 #ifdef _WIN32
@@ -18,6 +19,42 @@ constexpr char os_pathsep=':';
 #endif
 
 constexpr char dir_pathsep=std::filesystem::path::preferred_separator;
+
+std::string trim_leading_and_trailing_whitespace(std::string & input){
+  bool all_whitspace=true;
+
+  for(auto &c:input){
+    if(c!=' '){
+      all_whitspace=false;
+      break;
+    }
+  }
+
+  if(all_whitspace) return "";
+
+  size_t new_start, new_end=0;
+
+  for(size_t i=0;i<input.size();++i){
+    if(input[i]!=' '){
+      new_start=i;
+      break;
+    }
+  }
+
+  //Post-increment is used because comparison is made then decrement occurs
+  for(size_t i=input.size(); i-- >0 ;){
+    if(input[i]!=' '){
+      new_end=i;
+      break;
+    }
+  }
+
+  assert(new_start<=new_end);
+  size_t new_length=(new_end-new_start)+1;
+
+  return input.substr(new_start,new_length);
+
+}
 
 std::vector<std::string> parse_input(std::string & input){
   std::stringstream stream(input);
@@ -115,7 +152,11 @@ void run_program(std::vector<std::string> & tokens){
 
   if(!pid){
   //Child process
-    execvp(argv[0],const_cast<char* const*>(argv.data()));
+    if(execvp(argv[0],const_cast<char* const*>(argv.data()))){
+      std::string error_message=std::system_category().message(errno);
+
+      std::cout<<error_message<<"\n";
+    }
 
   }
   else{
@@ -128,12 +169,6 @@ inline void print_path(std::filesystem::path & input_path){
   std::cout<<(input_path.string())<<"\n";
 }
 
-
-// inline std::string get_home_directory(void){
-//   const char* home_path=getenv("HOME");
-
-//   return std::string(home_path);
-// }
 
 void change_directory(std::vector<std::string> & tokens){
 
@@ -174,7 +209,11 @@ int main() {
     std::string line;
     std::getline(std::cin,line);
 
-    std::vector<std::string> tokens=parse_input(line);
+    std::string input=trim_leading_and_trailing_whitespace(line);
+
+    if(input.empty()) continue;
+
+    std::vector<std::string> tokens=parse_input(input);
 
     std::string command=get_command(tokens);
 
