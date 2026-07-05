@@ -109,12 +109,22 @@ std::optional<std::string> find_exec_path(std::string & file,std::string & path)
 }
 
 inline void  echo_output(std::vector<std::string> & tokens){
-  //Need to look into how I parse quote characters might need to delimit those
+  size_t buffer_size=1; //Includes the newline character
+
+  //Skip the "echo" command
+  for(size_t i=1;i<tokens.size();++i){
+    buffer_size+=tokens[i].size();
+
+    if(i>1) ++buffer_size; //Include the delimiting whitespace
+  }
+
   std::string buffer;
+  buffer.reserve(buffer_size); //Modifies the capacity not the size
 
-  for(size_t i=1;i<tokens.size();++i){buffer+=tokens[i];buffer.push_back(' ');}
+  for(size_t i=1;i<tokens.size();++i){buffer+=tokens[i];buffer.push_back(' ');} 
+  buffer.push_back('\n');
 
-  std::cout<<buffer<<"\n";
+  std::cout<<buffer;
 }
 
 void determine_type(std::vector<std::string> & tokens,std::string & path,std::set<std::string> & builtins){
