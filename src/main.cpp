@@ -34,7 +34,7 @@ typedef struct command_token{
   quote_type variant;
 } command_token;
 
-std::string trim_leading_and_trailing_whitespace(std::string & input){
+std::string trim_leading_and_trailing_whitespace(const std::string & input){
   bool all_whitspace=true;
 
   for(auto &c:input){
@@ -138,7 +138,7 @@ command_token build_command_token(std::stack<std::pair<char,char>> & token_assem
   return output;
 }
 
-std::vector<command_token> tokenize_quote_variants(std::string & input){
+std::vector<command_token> tokenize_quote_variants(const std::string & input){
   assert(!input.empty());
   //First product is the character, second product is the delimiter character
   std::stack <std::pair<char,char>> token_assembler;
@@ -181,7 +181,7 @@ std::vector<command_token> tokenize_quote_variants(std::string & input){
   return tokens;
 }
 
-std::string filter_empty_quotes(std::string & buffer){
+std::string filter_empty_quotes(const std::string & buffer){
   assert(buffer.size()!=0);
   if(buffer.size()==1){
     return buffer;
@@ -212,7 +212,7 @@ std::string filter_empty_quotes(std::string & buffer){
 
 }
 
-inline bool can_append_tokens(command_token & prev_token,command_token & curr_token){
+inline bool can_append_tokens(const command_token & prev_token,const command_token & curr_token){
   assert(curr_token.start_index>prev_token.end_index);
 
   bool adjacent=(curr_token.start_index-prev_token.end_index==1);
@@ -222,7 +222,7 @@ inline bool can_append_tokens(command_token & prev_token,command_token & curr_to
   return (adjacent && valid_variants);
 }
 
-std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(std::vector<command_token> & tokens){
+std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(const std::vector<command_token> & tokens){
   assert(tokens.size()!=0);
 
   if(tokens.size()==1){
@@ -247,7 +247,7 @@ std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(std::v
 
 }
 
-std::vector<std::string> append_command_tokens(std::vector<std::pair<size_t,size_t>> & intervals,std::vector<command_token> & tokens){
+std::vector<std::string> append_command_tokens(const std::vector<std::pair<size_t,size_t>> & intervals,const std::vector<command_token> & tokens){
   assert(intervals.size()!=0);
 
   std::vector<std::string> arguments;
@@ -264,7 +264,7 @@ std::vector<std::string> append_command_tokens(std::vector<std::pair<size_t,size
   return arguments;
 }
 
-std::vector<std::string> parse_input(std::string & input){
+std::vector<std::string> parse_input(const std::string & input){
   assert(!input.empty());
 
   std::vector<command_token> tokens=tokenize_quote_variants(input);
@@ -303,7 +303,7 @@ std::vector<std::string> parse_input(std::string & input){
 }
 
 
-inline std::string get_command(std::vector<std::string> & tokens){
+inline std::string get_command(const std::vector<std::string> & tokens){
   std::string command;
 
   if(tokens.size()!=0){
@@ -312,7 +312,7 @@ inline std::string get_command(std::vector<std::string> & tokens){
   return command;
 }
 
-std::optional<std::string> find_exec_path(std::string & file,std::string & path){
+std::optional<std::string> find_exec_path(const std::string & file,const std::string & path){
 
   std::stringstream stream(path);
   std::string buffer;
@@ -344,7 +344,7 @@ std::optional<std::string> find_exec_path(std::string & file,std::string & path)
     return std::nullopt;
 }
 
-inline void  echo_output(std::vector<std::string> & tokens){
+inline void  echo_output(const std::vector<std::string> & tokens){
   size_t buffer_size=1; //Includes the newline character
 
   //Skip the "echo" command
@@ -363,7 +363,7 @@ inline void  echo_output(std::vector<std::string> & tokens){
   std::cout<<buffer;
 }
 
-void determine_type(std::vector<std::string> & tokens,std::string & path,std::set<std::string> & builtins){
+void determine_type(const std::vector<std::string> & tokens,const std::string & path,const std::set<std::string> & builtins){
   std::string arg_type;
 
   if(tokens.size()>1){
@@ -386,7 +386,7 @@ void determine_type(std::vector<std::string> & tokens,std::string & path,std::se
   }
 }
 
-void run_program(std::vector<std::string> & tokens){
+void run_program(const std::vector<std::string> & tokens){
   std::vector<const char*> argv(tokens.size()+1);
 
   for(size_t i {};i<tokens.size();++i){
@@ -410,13 +410,13 @@ void run_program(std::vector<std::string> & tokens){
   }
 }
 
-inline void print_path(std::filesystem::path & input_path){
+inline void print_path(const std::filesystem::path & input_path){
 
   std::cout<<(input_path.string())<<"\n";
 }
 
 
-void change_directory(std::vector<std::string> & tokens){
+void change_directory(const std::vector<std::string> & tokens){
 
   std::string updated_directory;
 
