@@ -247,6 +247,14 @@ std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(const 
 
 }
 
+void print_command_token_data(const std::vector<command_token> & tokens){
+
+  for(auto &token:tokens){
+    std::cout<<token.data<<" ";
+  }
+  std::cout<<"\n";
+}
+
 std::vector<std::string> append_command_tokens(const std::vector<std::pair<size_t,size_t>> & intervals,const std::vector<command_token> & tokens){
   assert(intervals.size()!=0);
 
@@ -262,6 +270,48 @@ std::vector<std::string> append_command_tokens(const std::vector<std::pair<size_
   }
 
   return arguments;
+}
+
+
+std::string perform_backslash_substituiton(const std::string & input,const quote_type variant){
+  assert(variant!=SINGLE);
+  assert(!input.empty());
+
+  if(input.size()==1){
+    return input;
+  }
+
+  std::set<char> double_quote_escape_characters={'\"','\\','$','`','\n'};
+
+  std::string output;
+  output.reserve(input.size()); //Bound on the max size
+  size_t index=0;
+
+  while(index<input.size()-1){
+    if(input[index]!='\\'){
+      output.push_back(input[index]);
+      ++index;
+      continue;
+    }
+
+    if(variant==WHITESPACE){
+      output.push_back(input[index+1]);
+    }
+    else{
+      //Backslash is treated literally in this case
+      if(!double_quote_escape_characters.contains(input[index+1])) output.push_back(input[index]);
+
+      output.push_back(input[index+1]);
+    }
+    index+=2;
+  }
+
+  if(index==input.size()-1){
+    assert(input[index-1]!='\\');
+    output.push_back(input[index]);
+  }
+
+  return output;
 }
 
 std::vector<std::string> parse_input(const std::string & input){
@@ -292,6 +342,8 @@ std::vector<std::string> parse_input(const std::string & input){
       token.data=token.data.substr(1,(token.data.size()-2));
     }
   }
+
+  // print_command_token_data(tokens); //Might need some extra logic to handle something like aaa"bbb" (should it be done in the parser?)Yeah might want to do that
 
   //Need the backslash substituiton
 
