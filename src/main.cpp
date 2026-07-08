@@ -86,6 +86,9 @@ inline bool delimiter_reached(char curr, char prev, char delimiter){
   //Backslash Special Case
   if(curr=='\"' && prev=='\\') return false;
 
+  //Whitespace Regions Ends when a Quote Begins
+  if((curr=='\"' || curr=='\'') && delimiter==' ') return true;
+
   return (curr==delimiter);
 }
 
@@ -105,21 +108,48 @@ inline quote_type get_variant(char c){
   }
 }
 
-command_token build_command_token(std::stack<std::pair<char,char>> & token_assembler,size_t end_idx,size_t buffer_size){
+
+command_token build_command_token_quote_version(std::stack<std::pair<char,char>> & token_assembler, size_t end,size_t buffer_size){
   assert(!token_assembler.empty());
 
   command_token output;
-  
   auto [last_char,delimiter]=token_assembler.top();
-  assert(last_char==delimiter || end_idx==buffer_size-1);
+  assert(last_char==delimiter);
 
-  size_t end=end_idx;
-  if(delimiter==' ' && (end_idx!=buffer_size-1)){
-    --end;
+  std::string data;
+  data.reserve(token_assembler.size());
+  size_t start=(end-token_assembler.size())+1;
+
+  while(!token_assembler.empty()){
+    char letter=token_assembler.top().first;
+    token_assembler.pop();
+    data.push_back(letter);
+  }
+
+  output.data=std::string(data.rbegin(),data.rend());
+  output.start_index=start;
+  output.end_index=end;
+  output.variant=get_variant(delimiter);
+
+  return output;
+}
+
+command_token build_command_token_whitespace_version(std::stack<std::pair<char,char>> & token_assembler,size_t end,size_t buffer_size){
+  assert(!token_assembler.empty());
+
+  command_token output;
+  auto[last_char,delimiter]=token_assembler.top();
+
+  bool last_char_also_delimiter=(last_char=='\'' || last_char=='\"');
+
+  size_t new_end=end;
+  if(delimiter==' ' && (end!=buffer_size-1)){
+    --new_end;
     token_assembler.pop();
   }
+
   assert(!token_assembler.empty());
-  size_t start=(end-token_assembler.size())+1;
+  size_t start=(new_end-token_assembler.size())+1;
 
   std::string data;
   data.reserve(token_assembler.size());
@@ -132,8 +162,13 @@ command_token build_command_token(std::stack<std::pair<char,char>> & token_assem
 
   output.data=std::string(data.rbegin(),data.rend());
   output.start_index=start;
-  output.end_index=end;
-  output.variant=get_variant(delimiter);
+  output.end_index=new_end;
+  output.variant=WHITESPACE;
+
+  if(last_char_also_delimiter){
+    assert(end!=buffer_size-1);
+    token_assembler.push({last_char,last_char}); //Is this mutation kind of awkward?
+  }
 
   return output;
 }
@@ -163,7 +198,8 @@ std::vector<command_token> tokenize_quote_variants(const std::string & input){
     token_assembler.push({curr,delimiter});
 
     if(delimiter_reached(curr,prev,delimiter)){
-      command_token argument=build_command_token(token_assembler,i,input.size());
+      command_token argument=((delimiter==' ') ?
+       build_command_token_whitespace_version(token_assembler,i,input.size()) :build_command_token_quote_version(token_assembler,i,input.size()));
       tokens.push_back(argument);
     }
 
@@ -172,7 +208,7 @@ std::vector<command_token> tokenize_quote_variants(const std::string & input){
   if(!token_assembler.empty()){
     auto [curr,delimiter]=token_assembler.top();
     assert(delimiter==' ');
-    command_token argument=build_command_token(token_assembler,input.size()-1,input.size());
+    command_token argument=build_command_token_whitespace_version(token_assembler,input.size()-1,input.size());
     tokens.push_back(argument);
   }
 
@@ -250,9 +286,9 @@ std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(const 
 void print_command_token_data(const std::vector<command_token> & tokens){
 
   for(auto &token:tokens){
-    std::cout<<token.data<<" ";
+    std::cout<<token.data<<"\n";
   }
-  std::cout<<"\n";
+  std::cout<<"-----------\n";
 }
 
 std::vector<std::string> append_command_tokens(const std::vector<std::pair<size_t,size_t>> & intervals,const std::vector<command_token> & tokens){
@@ -273,52 +309,13 @@ std::vector<std::string> append_command_tokens(const std::vector<std::pair<size_
 }
 
 
-std::string perform_backslash_substituiton(const std::string & input,const quote_type variant){
-  assert(variant!=SINGLE);
-  assert(!input.empty());
-
-  if(input.size()==1){
-    return input;
-  }
-
-  std::set<char> double_quote_escape_characters={'\"','\\','$','`','\n'};
-
-  std::string output;
-  output.reserve(input.size()); //Bound on the max size
-  size_t index=0;
-
-  while(index<input.size()-1){
-    if(input[index]!='\\'){
-      output.push_back(input[index]);
-      ++index;
-      continue;
-    }
-
-    if(variant==WHITESPACE){
-      output.push_back(input[index+1]);
-    }
-    else{
-      //Backslash is treated literally in this case
-      if(!double_quote_escape_characters.contains(input[index+1])) output.push_back(input[index]);
-
-      output.push_back(input[index+1]);
-    }
-    index+=2;
-  }
-
-  if(index==input.size()-1){
-    assert(input[index-1]!='\\');
-    output.push_back(input[index]);
-  }
-
-  return output;
-}
-
 std::vector<std::string> parse_input(const std::string & input){
   assert(!input.empty());
 
   std::vector<command_token> tokens=tokenize_quote_variants(input);
   assert(tokens.size()!=0);
+
+  print_command_token_data(tokens);
 
   //Might want to modify this later. If I need the data to truly represent the indices, but should be fine for now
   for(auto &token:tokens){
@@ -326,7 +323,6 @@ std::vector<std::string> parse_input(const std::string & input){
       token.data=filter_empty_quotes(token.data);
     }
   }
-
   //Might be able to logically WHITESPACE and DOUBLE as the same
   //Main difference is DOUBLE allows the whitespace characters
   //Think about it later
@@ -342,10 +338,6 @@ std::vector<std::string> parse_input(const std::string & input){
       token.data=token.data.substr(1,(token.data.size()-2));
     }
   }
-
-  // print_command_token_data(tokens); //Might need some extra logic to handle something like aaa"bbb" (should it be done in the parser?)Yeah might want to do that
-
-  //Need the backslash substituiton
 
   std::vector<std::pair<size_t,size_t>> intervals=find_joined_command_token_intervals(tokens);
 
