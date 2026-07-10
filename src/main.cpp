@@ -137,11 +137,6 @@ bool can_append_tokens(const command_token & a,const command_token & b){
   size_t b_offset=(b.variant==token_variant::UNQUOTED ? 0 : 1);
 
   return (((b.start_index-b_offset) - (a.end_index+a_offset)) ==1);
-  // // std::cout<<"Consecutive:"<<consecutive<<"\n";
-  // if(!consecutive) return false;
-  // // std::cout<<"Tokens are consecutive\n";
-
-  // return ((a.variant==b.variant) || ((a.variant!=token_variant::SINGLE_QUOTE) && (b.variant!=token_variant::SINGLE_QUOTE)));
 
 }
 
@@ -493,31 +488,15 @@ std::vector<std::string> parse_input(const std::string & input){
 
   std::vector<parse_mode> input_classifier=classify_token_regions(input);
 
-  // std::cout<<"Input Classifier:\n";
-  // print_token_regions(input_classifier);
 
   std::string canonical_input=preprocess_character_stream(input,input_classifier);
-
-  // std::cout<<"Canonical_input:"<<canonical_input<<"\n";
-
   std::vector<parse_mode> canonical_classifer=classify_token_regions(canonical_input);
-
-  // std::cout<<"Canonical Classifier:\n";
-  // print_token_regions(canonical_classifer);
-
-  if(canonical_classifer.empty()) return {};
+  if(canonical_classifer.empty()) return {""};
 
 
   std::vector<command_token> argument_tokens=build_command_tokens(canonical_input,canonical_classifer);
-
-  // std::cout<<"Number of command tokens:"<<argument_tokens.size()<<"\n";
-
-  // print_command_token_data(argument_tokens);
-
   std::vector<std::pair<size_t,size_t>> intervals=find_joined_command_token_intervals(argument_tokens);
-
   std::vector<std::string> command_line_arguments=append_command_tokens(intervals,argument_tokens);
-
 
   return command_line_arguments;
  
