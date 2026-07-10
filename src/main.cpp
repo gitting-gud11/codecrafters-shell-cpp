@@ -136,12 +136,12 @@ bool can_append_tokens(const command_token & a,const command_token & b){
   size_t a_offset=(a.variant==token_variant::UNQUOTED ? 0 : 1);
   size_t b_offset=(b.variant==token_variant::UNQUOTED ? 0 : 1);
 
-  bool consecutive=(((b.start_index-b_offset) - (a.end_index+a_offset)) ==1);
-  // std::cout<<"Consecutive:"<<consecutive<<"\n";
-  if(!consecutive) return false;
-  // std::cout<<"Tokens are consecutive\n";
+  return (((b.start_index-b_offset) - (a.end_index+a_offset)) ==1);
+  // // std::cout<<"Consecutive:"<<consecutive<<"\n";
+  // if(!consecutive) return false;
+  // // std::cout<<"Tokens are consecutive\n";
 
-  return ((a.variant==b.variant) || ((a.variant!=token_variant::SINGLE_QUOTE) && (b.variant!=token_variant::SINGLE_QUOTE)));
+  // return ((a.variant==b.variant) || ((a.variant!=token_variant::SINGLE_QUOTE) && (b.variant!=token_variant::SINGLE_QUOTE)));
 
 }
 
@@ -171,7 +171,6 @@ std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(const 
 }
 
 parse_mode get_resulting_state(char letter,parse_mode mode){
-  assert(letter!='\\');
 
   if(letter=='\''){
    switch(mode){
@@ -212,6 +211,11 @@ parse_mode get_resulting_state(char letter,parse_mode mode){
         assert(false);
         break;
    } 
+  }
+  else if(letter=='\\'){
+    //Escape logic handled separately
+    assert(mode!=parse_mode::ESCAPE);
+    return ((mode==parse_mode::WHITESPACE) ? (parse_mode::UNQUOTED) : mode);
   }
   //Whitespace treated literally only in single and double quoted regions
   else if(letter==' '){
@@ -264,8 +268,8 @@ std::vector<parse_mode> classify_token_regions(const std::string & input){
     if(letter=='\\' && mode!=parse_mode::SINGLE_QUOTE){
       regions.push_back(parse_mode::ESCAPE);
       pending_escape=true;
-      //Might need a cleaner way to do this
-      mode=((parse_mode::WHITESPACE==mode) ? (parse_mode::UNQUOTED) : mode);
+
+      mode=get_resulting_state(letter,mode);
       continue;
     }
 
