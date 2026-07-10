@@ -264,6 +264,8 @@ std::vector<parse_mode> classify_token_regions(const std::string & input){
     if(letter=='\\' && mode!=parse_mode::SINGLE_QUOTE){
       regions.push_back(parse_mode::ESCAPE);
       pending_escape=true;
+      //Might need a cleaner way to do this
+      mode=((parse_mode::WHITESPACE==mode) ? (parse_mode::UNQUOTED) : mode);
       continue;
     }
 
