@@ -137,8 +137,9 @@ bool can_append_tokens(const command_token & a,const command_token & b){
   size_t b_offset=(b.variant==token_variant::UNQUOTED ? 0 : 1);
 
   bool consecutive=(((b.start_index-b_offset) - (a.end_index+a_offset)) ==1);
-
+  // std::cout<<"Consecutive:"<<consecutive<<"\n";
   if(!consecutive) return false;
+  // std::cout<<"Tokens are consecutive\n";
 
   return ((a.variant==b.variant) || ((a.variant!=token_variant::SINGLE_QUOTE) && (b.variant!=token_variant::SINGLE_QUOTE)));
 
@@ -165,6 +166,7 @@ std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(const 
 
   //Include the last interval
   intervals.push_back({start_idx,tokens.size()-1});
+  // std::cout<<"Intervals.size()="<<intervals.size()<<"\n";
   return intervals;
 }
 
@@ -337,30 +339,6 @@ std::string preprocess_character_stream(const std::string & input,const std::vec
     ++index;
   }
 
-  // for(size_t i=1;i<input.size();++i){
-  //   //Current character is escaped cannot be part of an empty quote region
-  //   //Access is safe becase start at the first index
-  //   if(classifier[i-1]==parse_mode::ESCAPE){
-  //     continue;
-  //   }
-
-  //   //Both characters must be the same and in the same mode
-  //   if((input[i-1]!=input[i]) || (classifier[i-1]!=classifier[i])){
-  //     continue;
-  //   }
-
-  //   //Empty single quote
-  //   if(input[i]=='\'' && classifier[i]==parse_mode::SINGLE_QUOTE){
-  //     characters[i-1]=std::nullopt;
-  //     characters[i]=std::nullopt;
-  //   }
-  //   //Empty double quote
-  //   else if(input[i]=='\"' && classifier[i]==parse_mode::DOUBLE_QUOTE){
-  //     characters[i-1]=std::nullopt;
-  //     characters[i]=std::nullopt;
-  //   }
-  // }
-
   std::string processed;
   processed.reserve(input.size());
 
@@ -417,6 +395,7 @@ command_token assemble_token(std::vector<std::optional<char>> & argument, size_t
   token.start_index=start_idx+offset;
   token.end_index=end_idx-offset;
   assert(token.start_index<=token.end_index);
+  // std::cout<<"token.start_index="<<token.start_index<<" token.end_index="<<token.end_index<<" token_variant"<<token_variant_to_str(variant)<<"\n";
   token.variant=variant;
 
   argument.clear();
@@ -482,7 +461,8 @@ std::vector<std::string> append_command_tokens(const std::vector<std::pair<size_
   for(auto [start,end]:intervals){
     std::vector<std::optional<char>> data_stream;
 
-    for(auto &token:argument_tokens){
+    for(size_t i=start;i<=end;++i){
+      const command_token & token=argument_tokens[i];
       data_stream.insert(data_stream.end(),token.data.begin(),token.data.end());
     }
 
@@ -507,26 +487,26 @@ std::vector<std::string> parse_input(const std::string & input){
 
   std::vector<parse_mode> input_classifier=classify_token_regions(input);
 
-  std::cout<<"Input Classifier:\n";
-  print_token_regions(input_classifier);
+  // std::cout<<"Input Classifier:\n";
+  // print_token_regions(input_classifier);
 
   std::string canonical_input=preprocess_character_stream(input,input_classifier);
 
-  std::cout<<"Canonical_input:"<<canonical_input<<"\n";
+  // std::cout<<"Canonical_input:"<<canonical_input<<"\n";
 
   std::vector<parse_mode> canonical_classifer=classify_token_regions(canonical_input);
 
-  std::cout<<"Canonical Classifier:\n";
-  print_token_regions(canonical_classifer);
+  // std::cout<<"Canonical Classifier:\n";
+  // print_token_regions(canonical_classifer);
 
   if(canonical_classifer.empty()) return {};
 
 
   std::vector<command_token> argument_tokens=build_command_tokens(canonical_input,canonical_classifer);
 
-  std::cout<<"Number of command tokens:"<<argument_tokens.size()<<"\n";
+  // std::cout<<"Number of command tokens:"<<argument_tokens.size()<<"\n";
 
-  print_command_token_data(argument_tokens);
+  // print_command_token_data(argument_tokens);
 
   std::vector<std::pair<size_t,size_t>> intervals=find_joined_command_token_intervals(argument_tokens);
 
