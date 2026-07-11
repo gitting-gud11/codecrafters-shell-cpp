@@ -23,6 +23,17 @@ constexpr char os_pathsep=':';
 
 constexpr char dir_pathsep=std::filesystem::path::preferred_separator;
 
+void print_errno_message(void){
+      std::string error_message=std::system_category().message(errno);
+      std::cerr<<error_message<<"\n";
+      return;
+}
+
+class Shell_IO{
+//Fill this in
+};
+
+
 enum class parse_mode{
   UNQUOTED,
   SINGLE_QUOTE,
@@ -161,7 +172,6 @@ std::vector<std::pair<size_t,size_t>> find_joined_command_token_intervals(const 
 
   //Include the last interval
   intervals.push_back({start_idx,tokens.size()-1});
-  // std::cout<<"Intervals.size()="<<intervals.size()<<"\n";
   return intervals;
 }
 
@@ -594,20 +604,35 @@ void run_program(const std::vector<std::string> & tokens){
   }
   argv[tokens.size()]=NULL;
 
-  pid_t pid=fork();
+  pid_t pid;
+  switch (pid=fork()){
+    case -1:
+      print_errno_message();
+      break;
+    case 0:
+      //Child Process
+      if(execvp(argv[0],const_cast<char* const*>(argv.data()))) print_errno_message();
+      break;
+    default:
+      //Parent Process
+      waitpid(pid,NULL,0);
 
-  if(!pid){
-  //Child process
-    if(execvp(argv[0],const_cast<char* const*>(argv.data()))){
-      std::string error_message=std::system_category().message(errno);
-
-      std::cerr<<error_message<<"\n";
-    }
-
+      // std::string error_message=
   }
-  else{
-    waitpid(pid,NULL,0);
-  }
+  // pid_t pid=fork();
+
+  // if(!pid){
+  // //Child process
+  //   if(execvp(argv[0],const_cast<char* const*>(argv.data()))){
+  //     std::string error_message=std::system_category().message(errno);
+
+  //     std::cerr<<error_message<<"\n";
+  //   }
+
+  // }
+  // else{
+  //   waitpid(pid,NULL,0);
+  // }
 }
 
 inline void print_path(const std::filesystem::path & input_path){
