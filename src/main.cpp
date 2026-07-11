@@ -592,7 +592,7 @@ void determine_type(const std::vector<std::string> & tokens,const std::string & 
     std::cout<<arg_type<<" is "<<exec_path.value()<<"\n";
   }
   else{
-    std::cout<<arg_type<<": not found\n";
+    std::cerr<<arg_type<<": not found\n";
   }
 }
 
@@ -616,23 +616,8 @@ void run_program(const std::vector<std::string> & tokens){
     default:
       //Parent Process
       waitpid(pid,NULL,0);
-
-      // std::string error_message=
+      break;
   }
-  // pid_t pid=fork();
-
-  // if(!pid){
-  // //Child process
-  //   if(execvp(argv[0],const_cast<char* const*>(argv.data()))){
-  //     std::string error_message=std::system_category().message(errno);
-
-  //     std::cerr<<error_message<<"\n";
-  //   }
-
-  // }
-  // else{
-  //   waitpid(pid,NULL,0);
-  // }
 }
 
 inline void print_path(const std::filesystem::path & input_path){
@@ -661,7 +646,7 @@ void change_directory(const std::vector<std::string> & tokens){
     std::filesystem::current_path(updated_directory);
   }
   else{
-    std::cout<<"cd: "<<updated_directory<<": No such file or directory\n";
+    std::cerr<<"cd: "<<updated_directory<<": No such file or directory\n";
   }
 }
 
@@ -713,7 +698,7 @@ int main() {
       }
       else{
         std::string command_failed=command+": command not found\n";
-        std::cout<<command_failed;
+        std::cerr<<command_failed;
 
       }
 
