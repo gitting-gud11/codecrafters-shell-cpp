@@ -5,14 +5,15 @@
 #include <iostream>
 #include <optional>
 #include <set>
-#include<stack>
 #include <sstream>
 #include <string>
 #include <vector>
+#include<fcntl.h>
 #include<sys/wait.h>
 #include<system_error>
 #include<unistd.h>
 //Tries are ideal for autocomplete tasks make a file with an implementation for this data-structure when I get to the command completion phase
+//Bash documentation https://www.gnu.org/software/bash/manual/bash.html#Introduction
 #define CMD_ARG_RESERVE 10
 
 #ifdef _WIN32
@@ -29,8 +30,127 @@ void print_errno_message(void){
       return;
 }
 
+//Think about error handling
+//Might rewrite the class to be a namespace
 class Shell_IO{
-//Fill this in
+public:
+
+  void set_file_redirection(const std::vector<std::string> & commands){
+
+    for(size_t i=0;i<commands.size()-1;++i){
+      auto redirect_descriptor=determine_redirection(commands[i]);
+      if(redirect_descriptor.has_value()){
+        auto [fd,append_mode]=redirect_descriptor.value();
+        redirect_channel(fd,append_mode,commands[i+1].data());
+      }
+    }
+  }
+
+
+  static void restore_file_redirection(void){
+
+    for(auto [old_fd,new_fd]:file_aliases){
+      if(dup2(old_fd,new_fd)==-1){
+        print_errno_message();
+      }
+
+      if(close(old_fd)==-1){
+        print_errno_message();
+      }
+    }
+    file_aliases.clear();
+  }
+
+private:
+  static std::vector<std::pair<int,int>> file_aliases;
+
+  static inline std::pair<std::string,std::string> redirection_tokenization(const std::string & command){
+    assert(!command.empty());
+    auto iter=std::find_if_not(command.begin(),command.end(),isdigit);
+
+    if(iter==command.begin()){
+      return std::pair{"",command};
+    }
+    else if(iter==command.end()){
+      return std::pair{command,""};
+    }
+    else{
+      return std::pair{std::string(command.begin(),iter-1),std::string(iter,command.end())};
+    }
+  }
+
+  static std::optional<std::pair<int,bool>> determine_redirection(const std::string & command){
+    auto [file_descriptor,redirection_variant]=redirection_tokenization(command);
+
+    if(redirection_variant.empty() || redirection_variant.size()>=2) return std::nullopt;
+
+    if(file_descriptor.empty() && redirection_variant=="<"){
+      return std::pair{STDIN_FILENO,false};
+    }
+
+    bool append_mode;
+    if(redirection_variant==">"){
+      append_mode=false;
+    }
+    else if(redirection_variant==">>"){
+      append_mode=true;
+    }
+    else{
+      return std::nullopt;
+    }
+
+    int descriptor=(file_descriptor.empty()) ? STDOUT_FILENO : (stoi(file_descriptor));
+    return std::pair{descriptor,append_mode};
+  }
+ 
+
+  static void redirect_channel(int fd,const bool append_flag,const char* filename){
+
+    int flags=O_CREAT;
+
+    if(fd){
+      flags|=O_WRONLY;
+    }
+    else{
+
+      flags|=O_RDONLY;
+    }
+
+    if(append_flag){
+      flags|=O_APPEND;
+    }
+    else{
+      flags|=O_TRUNC;
+    }
+
+    int save_fd;
+    if((save_fd=dup(fd))==-1){
+      print_errno_message();
+      return;
+    }
+
+    int file_fd;
+    if((file_fd=open(filename,flags))==-1){
+      print_errno_message();
+      close(save_fd);
+      return;
+    }
+
+    if(dup2(file_fd,fd)==-1){
+      print_errno_message();
+      close(file_fd);
+      close(save_fd);
+      return;
+    }
+    
+    if(close(file_fd)==-1){
+      print_errno_message();
+      close(save_fd);
+      return;
+    }
+
+    file_aliases.push_back(std::pair{save_fd,fd});
+  } 
 };
 
 
@@ -650,6 +770,9 @@ void change_directory(const std::vector<std::string> & tokens){
   }
 }
 
+
+Shell_IO shell_config;
+
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -670,6 +793,7 @@ int main() {
     if(input.empty()) continue;
 
     std::vector<std::string> tokens=parse_input(input);
+
 
     std::string command=get_command(tokens);
 
