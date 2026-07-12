@@ -31,40 +31,10 @@ void print_errno_message(void){
 }
 
 //Think about error handling
-//Might rewrite the class to be a namespace
-class Shell_IO{
-public:
+namespace Shell_IO{
+  std::vector<std::pair<int,int>> file_aliases;
 
-  void set_file_redirection(const std::vector<std::string> & commands){
-
-    for(size_t i=0;i<commands.size()-1;++i){
-      auto redirect_descriptor=determine_redirection(commands[i]);
-      if(redirect_descriptor.has_value()){
-        auto [fd,append_mode]=redirect_descriptor.value();
-        redirect_channel(fd,append_mode,commands[i+1].data());
-      }
-    }
-  }
-
-
-  static void restore_file_redirection(void){
-
-    for(auto [old_fd,new_fd]:file_aliases){
-      if(dup2(old_fd,new_fd)==-1){
-        print_errno_message();
-      }
-
-      if(close(old_fd)==-1){
-        print_errno_message();
-      }
-    }
-    file_aliases.clear();
-  }
-
-private:
-  static std::vector<std::pair<int,int>> file_aliases;
-
-  static inline std::pair<std::string,std::string> redirection_tokenization(const std::string & command){
+  inline std::pair<std::string,std::string> redirection_tokenization(const std::string & command){
     assert(!command.empty());
     auto iter=std::find_if_not(command.begin(),command.end(),isdigit);
 
@@ -75,19 +45,19 @@ private:
       return std::pair{command,""};
     }
     else{
-      return std::pair{std::string(command.begin(),iter-1),std::string(iter,command.end())};
+      return std::pair{std::string(command.begin(),iter),std::string(iter,command.end())};
     }
   }
 
-  static std::optional<std::pair<int,bool>> determine_redirection(const std::string & command){
+  std::optional<std::pair<int,bool>> determine_redirection(const std::string & command){
     auto [file_descriptor,redirection_variant]=redirection_tokenization(command);
 
-    if(redirection_variant.empty() || redirection_variant.size()>=2) return std::nullopt;
+    if(redirection_variant.empty() || redirection_variant.size()>2) return std::nullopt;
 
     if(file_descriptor.empty() && redirection_variant=="<"){
       return std::pair{STDIN_FILENO,false};
     }
-
+    //Check what is going on with append mode
     bool append_mode;
     if(redirection_variant==">"){
       append_mode=false;
@@ -102,9 +72,25 @@ private:
     int descriptor=(file_descriptor.empty()) ? STDOUT_FILENO : (stoi(file_descriptor));
     return std::pair{descriptor,append_mode};
   }
- 
 
-  static void redirect_channel(int fd,const bool append_flag,const char* filename){
+  bool is_redirection(const std::string & command){
+    return (determine_redirection(command).has_value());
+  }
+
+  //Might want to make this more robust in the future since redirection is not necessarily the suffix
+  std::vector<std::string> filter_redirection_commands(const std::vector<std::string> & commands){
+    auto iter=std::find_if_not(commands.begin(),commands.end(),[](const std::string & s){return !is_redirection(s);});
+
+    if(iter==commands.end()){
+      return commands;
+    }
+    else{
+      return std::vector<std::string>(commands.begin(),iter);
+    }
+
+  }
+
+  void redirect_channel(int fd,const bool append_flag,const char* filename){
 
     int flags=O_CREAT;
 
@@ -130,7 +116,7 @@ private:
     }
 
     int file_fd;
-    if((file_fd=open(filename,flags))==-1){
+    if((file_fd=open(filename,flags,S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH))==-1){
       print_errno_message();
       close(save_fd);
       return;
@@ -151,6 +137,31 @@ private:
 
     file_aliases.push_back(std::pair{save_fd,fd});
   } 
+  void set_file_redirection(const std::vector<std::string> & commands){
+
+    for(size_t i=0;i<commands.size()-1;++i){
+      auto redirect_descriptor=determine_redirection(commands[i]);
+      if(redirect_descriptor.has_value()){
+        auto [fd,append_mode]=redirect_descriptor.value();
+        redirect_channel(fd,append_mode,commands[i+1].data());
+      }
+    }
+  }
+
+
+  void restore_file_redirection(void){
+
+    for(auto [old_fd,new_fd]:file_aliases){
+      if(dup2(old_fd,new_fd)==-1){
+        print_errno_message();
+      }
+
+      if(close(old_fd)==-1){
+        print_errno_message();
+      }
+    }
+    file_aliases.clear();
+  }
 };
 
 
@@ -771,7 +782,6 @@ void change_directory(const std::vector<std::string> & tokens){
 }
 
 
-Shell_IO shell_config;
 
 int main() {
   // Flush after every std::cout / std:cerr
@@ -783,6 +793,8 @@ int main() {
   std::set<std::string> builtins={"cd","echo","exit","pwd","type"};
 
   while(1){
+    Shell_IO::restore_file_redirection();
+
     std::cout << "$ ";
 
     std::string line;
@@ -792,8 +804,11 @@ int main() {
 
     if(input.empty()) continue;
 
-    std::vector<std::string> tokens=parse_input(input);
+    std::vector<std::string> all_tokens=parse_input(input);
 
+    Shell_IO::set_file_redirection(all_tokens); //Might want to rename from all_tokens
+
+    std::vector<std::string> tokens=Shell_IO::filter_redirection_commands(all_tokens);
 
     std::string command=get_command(tokens);
 
