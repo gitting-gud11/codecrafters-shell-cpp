@@ -32,6 +32,10 @@ void print_errno_message(void){
       return;
 }
 
+void test(void){
+  
+}
+
 //Think about error handling
 namespace Shell_IO{
   std::vector<std::pair<int,int>> file_aliases;
@@ -798,11 +802,13 @@ int main() {
     Shell_IO::restore_file_redirection();
 
     rl_bind_key('\t',rl_complete); //I need to use a trie to support builtin command completion that is why
+    //rl_complete works for paths, but I also want completion for commands
 
     char * line_cstr=readline("$ ");
 
     std::string line(line_cstr);
-
+    free(line_cstr);
+    
     std::string input=trim_leading_and_trailing_whitespace(line);
 
     if(input.empty()) continue;
