@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include<map>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -35,6 +36,109 @@ void print_errno_message(void){
 void test(void){
   
 }
+
+// char** wee(const char* text,int start,int end){
+//   // std::cout<<"Function has been assigned\n";
+
+//   char ** test=(char**)malloc(sizeof(char*)*3);
+
+//   test[0]=(char*)malloc(sizeof(char)*5);
+//   test[0][0]='e',test[0][1]='c',test[0][2]='h',test[0][3]='o',test[0][4]='\0';
+
+//   test[1]=(char *)malloc(sizeof(char)*5);
+//   test[1][0]='e',test[1][1]='e',test[1][2]='v',test[1][3]='e',test[1][4]='\0';
+
+
+//   // std::string s="echo";
+
+//   // test[0]=const_cast<char*>("echo");
+//   // test[0]=s.data();
+//   test[2]=NULL;
+//   return test;
+// }
+namespace Builtin_AutoComplete{
+  struct node{
+    std::optional<std::string> data;
+    std::map<char,std::unique_ptr<node>> children;
+  };
+
+  std::vector<std::string> builtins={"cd","echo","exit","pwd","type"};
+
+  std::unique_ptr<node> Trie=std::make_unique<node>();
+
+  void insert(const std::string & text){
+    node* iterator=Trie.get();
+
+    for(auto &letter:text){
+      auto & children=iterator->children;
+
+      if(!children.contains(letter)){
+        children[letter]=std::make_unique<node>();
+      }
+      iterator=children[letter].get();
+    }
+
+    iterator->data=text;
+  }
+
+  void dfs_extract_matches(node* curr,std::vector<std::string> & matches){
+    assert(curr!=nullptr);
+    if(curr->data.has_value()){
+      matches.push_back(curr->data.value());
+    }
+
+    auto & children=curr->children;
+
+    for(auto iter=children.begin();iter!=children.end();++iter){
+      node* child=iter->second.get();
+      dfs_extract_matches(child,matches);
+    }
+  }
+
+  std::vector<std::string> find_matches(std::string & text){
+    node* iterator=Trie.get();
+
+    for(auto & letter:text){
+      auto & children=iterator->children;
+      
+      if(!children.contains(letter)){
+        return {}; //No match
+      }
+      iterator=children[letter].get();
+    }
+    std::vector<std::string> matches;
+    dfs_extract_matches(iterator,matches);
+    return matches;
+  }
+
+  char** rl_builtin_completion_function(const char* text,int start,int end){
+    std::string segment=std::string(text+start,text+end);
+
+    std::vector<std::string> matches=find_matches(segment);
+
+    if(matches.empty()){
+      return NULL;
+    }
+
+    char** matches_cstyle=(char**)malloc(sizeof(char*)*matches.size()+1);
+    matches_cstyle[matches.size()]=NULL;
+
+    for(size_t i{};i<matches.size();++i){
+      matches_cstyle[i]=(char *)malloc(sizeof(char)*matches[i].size());
+      memcpy(matches_cstyle[i],matches[i].data(),matches[i].size()+1); //Include the null-terminator
+    }
+    return matches_cstyle;
+  }
+
+  void init_builtin_completion(void){
+    for(auto & cmd:builtins){
+      insert(cmd);
+    }
+    rl_attempted_completion_function=rl_builtin_completion_function;
+  }
+
+};
+
 
 //Think about error handling
 namespace Shell_IO{
@@ -788,7 +892,6 @@ void change_directory(const std::vector<std::string> & tokens){
 }
 
 
-
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -796,7 +899,9 @@ int main() {
 
   std::string path=std::string(std::getenv("PATH"));
 
-  std::set<std::string> builtins={"cd","echo","exit","pwd","type"};
+  std::set<std::string> builtins(Builtin_AutoComplete::builtins.begin(),Builtin_AutoComplete::builtins.end());
+
+  Builtin_AutoComplete::init_builtin_completion();
 
   while(1){
     Shell_IO::restore_file_redirection();
@@ -808,7 +913,7 @@ int main() {
 
     std::string line(line_cstr);
     free(line_cstr);
-    
+
     std::string input=trim_leading_and_trailing_whitespace(line);
 
     if(input.empty()) continue;
