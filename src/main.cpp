@@ -33,36 +33,15 @@ void print_errno_message(void){
       return;
 }
 
-void test(void){
-  
-}
-
-// char** wee(const char* text,int start,int end){
-//   // std::cout<<"Function has been assigned\n";
-
-//   char ** test=(char**)malloc(sizeof(char*)*3);
-
-//   test[0]=(char*)malloc(sizeof(char)*5);
-//   test[0][0]='e',test[0][1]='c',test[0][2]='h',test[0][3]='o',test[0][4]='\0';
-
-//   test[1]=(char *)malloc(sizeof(char)*5);
-//   test[1][0]='e',test[1][1]='e',test[1][2]='v',test[1][3]='e',test[1][4]='\0';
-
-
-//   // std::string s="echo";
-
-//   // test[0]=const_cast<char*>("echo");
-//   // test[0]=s.data();
-//   test[2]=NULL;
-//   return test;
-// }
 namespace Builtin_AutoComplete{
+  //Maybe pull out the struct stuff and make it a class? Add a constructor which contains the data that I want
+  //Trie for the path seems quite similar
   struct node{
     std::optional<std::string> data;
     std::map<char,std::unique_ptr<node>> children;
   };
 
-  std::vector<std::string> builtins={"cd","echo","exit","pwd","type"};
+  const std::vector<std::string> builtins={"cd","echo","exit","pwd","type"};
 
   std::unique_ptr<node> Trie=std::make_unique<node>();
 
@@ -95,7 +74,7 @@ namespace Builtin_AutoComplete{
     }
   }
 
-  std::vector<std::string> find_matches(std::string & text){
+  std::vector<std::string> find_matches(const std::string & text){
     node* iterator=Trie.get();
 
     for(auto & letter:text){
@@ -899,7 +878,7 @@ int main() {
 
   std::string path=std::string(std::getenv("PATH"));
 
-  std::set<std::string> builtins(Builtin_AutoComplete::builtins.begin(),Builtin_AutoComplete::builtins.end());
+  const std::set<std::string> builtins(Builtin_AutoComplete::builtins.begin(),Builtin_AutoComplete::builtins.end());
 
   Builtin_AutoComplete::init_builtin_completion();
 
