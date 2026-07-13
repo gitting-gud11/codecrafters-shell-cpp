@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 #include<fcntl.h>
+#include<stdio.h>
+#include<readline/readline.h>
 #include<sys/wait.h>
 #include<system_error>
 #include<unistd.h>
@@ -795,10 +797,11 @@ int main() {
   while(1){
     Shell_IO::restore_file_redirection();
 
-    std::cout << "$ ";
+    rl_bind_key('\t',rl_complete); //I need to use a trie to support builtin command completion that is why
 
-    std::string line;
-    std::getline(std::cin,line);
+    char * line_cstr=readline("$ ");
+
+    std::string line(line_cstr);
 
     std::string input=trim_leading_and_trailing_whitespace(line);
 
