@@ -38,13 +38,14 @@ void print_errno_message(void){
 namespace AutoComplete{
   //Maybe pull out the struct stuff and make it a class? Add a constructor which contains the data that I want
   //Trie for the path seems quite similar
+  //Look into path being dynamic/nonconstant and modifying node struct to facilitate it
   struct node{
     std::optional<std::string> data;
     std::map<char,std::unique_ptr<node>> children;
   };
 
   std::string path=getenv("PATH");
-  const std::vector<std::string> builtins={"cd","echo","exit","pwd","type"};
+  const std::vector<std::string> builtins={"cd","complete","echo","exit","pwd","type"};
 
   std::unique_ptr<node> Trie=std::make_unique<node>();
 
