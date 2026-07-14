@@ -18,6 +18,8 @@
 //Tries are ideal for autocomplete tasks make a file with an implementation for this data-structure when I get to the command completion phase
 //Bash documentation https://www.gnu.org/software/bash/manual/bash.html#Introduction
 #define CMD_ARG_RESERVE 10
+#define PATH_CNT_RESERVE 2048
+
 
 #ifdef _WIN32
 constexpr char os_pathsep=';';
@@ -62,16 +64,34 @@ namespace Builtin_AutoComplete{
 
   void dfs_extract_matches(node* curr,std::vector<std::string> & matches){
     assert(curr!=nullptr);
+    bool value_found=false;
+    bool insertion_made=false;
+    char next_letter='\0';
     if(curr->data.has_value()){
-      matches.push_back(curr->data.value());
+      value_found=true;
+      next_letter=(curr->data.value().size()>=1) ? (curr->data.value()[1]) : '\0';
     }
 
     auto & children=curr->children;
 
     for(auto iter=children.begin();iter!=children.end();++iter){
+      char child_letter=iter->first;
       node* child=iter->second.get();
+
+      if(value_found && (!insertion_made) && (next_letter<=child_letter)){
+        //Performs inorder insertion
+        matches.push_back(curr->data.value());
+        insertion_made=true;
+      }
       dfs_extract_matches(child,matches);
     }
+
+    //Case where node has no children
+    if(value_found && (!insertion_made)){
+      matches.push_back(curr->data.value());
+      insertion_made=true;
+    }
+
   }
 
   std::vector<std::string> find_matches(const std::string & text){
