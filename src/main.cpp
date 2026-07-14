@@ -35,7 +35,7 @@ void print_errno_message(void){
       return;
 }
 
-namespace Builtin_AutoComplete{
+namespace AutoComplete{
   //Maybe pull out the struct stuff and make it a class? Add a constructor which contains the data that I want
   //Trie for the path seems quite similar
   struct node{
@@ -43,6 +43,7 @@ namespace Builtin_AutoComplete{
     std::map<char,std::unique_ptr<node>> children;
   };
 
+  std::string path=getenv("PATH");
   const std::vector<std::string> builtins={"cd","echo","exit","pwd","type"};
 
   std::unique_ptr<node> Trie=std::make_unique<node>();
@@ -70,7 +71,7 @@ namespace Builtin_AutoComplete{
     if(curr->data.has_value()){
       value_found=true;
       next_letter=(curr->data.value().size()>=1) ? (curr->data.value()[1]) : '\0';
-    }
+    } //Issue with autocomplete is that checking index #1 is static need to modify implementation through augmenting with a character probably
 
     auto & children=curr->children;
 
@@ -129,10 +130,32 @@ namespace Builtin_AutoComplete{
     return matches_cstyle;
   }
 
+  void insert_path_executables(void){
+    std::stringstream stream(path);
+    std::string directory;
+
+    while(std::getline(stream,directory,os_pathsep)){
+
+      //Check if the process can read from the directory
+      //Access returns 0 on success
+      if(access(directory.c_str(),R_OK)) continue;
+      std::filesystem::path curr_path{directory};
+
+      for(auto const& dir_entry:std::filesystem::directory_iterator{curr_path}){
+        auto file_path=dir_entry.path();
+
+        if(!access(file_path.c_str(),X_OK)){
+          insert(file_path.filename().string());
+        }
+      }
+    }
+  }
+
   void init_builtin_completion(void){
     for(auto & cmd:builtins){
       insert(cmd);
     }
+    insert_path_executables();
     rl_attempted_completion_function=rl_builtin_completion_function;
   }
 
@@ -896,11 +919,11 @@ int main() {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
-  std::string path=std::string(std::getenv("PATH"));
+  // std::string path=std::string(std::getenv("PATH")); //For now assume the path is constant
 
-  const std::set<std::string> builtins(Builtin_AutoComplete::builtins.begin(),Builtin_AutoComplete::builtins.end());
+  const std::set<std::string> builtins(AutoComplete::builtins.begin(),AutoComplete::builtins.end());
 
-  Builtin_AutoComplete::init_builtin_completion();
+  AutoComplete::init_builtin_completion();
 
   while(1){
     Shell_IO::restore_file_redirection();
@@ -936,7 +959,7 @@ int main() {
      print_path(working_path);
     }
     else if(command=="type"){
-      determine_type(tokens,path,builtins);
+      determine_type(tokens,AutoComplete::path,builtins);
     }
     else if(command=="cd"){
       change_directory(tokens);
@@ -944,7 +967,7 @@ int main() {
     else{
       //Want to check if I can execute the program
       //Might change to execv since I already have the path
-      std::optional<std::string> exec_path=find_exec_path(command,path);
+      std::optional<std::string> exec_path=find_exec_path(command,AutoComplete::path);
       if(exec_path.has_value()){
         run_program(tokens);
       }
