@@ -65,34 +65,16 @@ namespace AutoComplete{
 
   void dfs_extract_matches(node* curr,std::vector<std::string> & matches){
     assert(curr!=nullptr);
-    bool value_found=false;
-    bool insertion_made=false;
-    char next_letter='\0';
     if(curr->data.has_value()){
-      value_found=true;
-      next_letter=(curr->data.value().size()>=1) ? (curr->data.value()[1]) : '\0';
-    } //Issue with autocomplete is that checking index #1 is static need to modify implementation through augmenting with a character probably
+      matches.push_back(curr->data.value());
+    }
 
     auto & children=curr->children;
 
     for(auto iter=children.begin();iter!=children.end();++iter){
-      char child_letter=iter->first;
       node* child=iter->second.get();
-
-      if(value_found && (!insertion_made) && (next_letter<=child_letter)){
-        //Performs inorder insertion
-        matches.push_back(curr->data.value());
-        insertion_made=true;
-      }
       dfs_extract_matches(child,matches);
     }
-
-    //Case where node has no children
-    if(value_found && (!insertion_made)){
-      matches.push_back(curr->data.value());
-      insertion_made=true;
-    }
-
   }
 
   std::vector<std::string> find_matches(const std::string & text){
@@ -801,15 +783,8 @@ std::optional<std::string> find_exec_path(const std::string & file,const std::st
 
     std::filesystem::perms entry_permissions=entry.status().permissions();
 
-    std::filesystem::perms executeable=((entry_permissions & std::filesystem::perms::owner_exec) | (
-      entry_permissions & std::filesystem::perms::group_exec) | (entry_permissions & std::filesystem::perms::others_exec));
-
-      switch (executeable)
-      {
-        case (std::filesystem::perms::none):
-              break;
-        default:
-              return location;
+    if(!access(location.c_str(),X_OK)){
+      return location;
       }
 
     }
