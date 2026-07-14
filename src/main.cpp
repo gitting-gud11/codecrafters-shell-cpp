@@ -18,7 +18,7 @@
 //Tries are ideal for autocomplete tasks make a file with an implementation for this data-structure when I get to the command completion phase
 //Bash documentation https://www.gnu.org/software/bash/manual/bash.html#Introduction
 #define CMD_ARG_RESERVE 10
-#define PATH_CNT_RESERVE 2048
+#define PATH_CNT_RESERVE 2048 //Estimate on a bound of executables in the path
 
 
 #ifdef _WIN32
@@ -89,27 +89,36 @@ namespace AutoComplete{
       iterator=children[letter].get();
     }
     std::vector<std::string> matches;
+    matches.reserve(PATH_CNT_RESERVE);
     dfs_extract_matches(iterator,matches);
     return matches;
   }
 
-  char** rl_builtin_completion_function(const char* text,int start,int end){
-    std::string segment=std::string(text+start,text+end);
+  char* command_generator(const char* text,int state){
+    static int index;
+    static std::vector<std::string> matches;
+    static std::string text_str;
 
-    std::vector<std::string> matches=find_matches(segment);
-
-    if(matches.empty()){
-      return NULL;
+    if(!state){
+      index=0;
+      matches.clear();
+      text_str=text;
+      matches=find_matches(text_str);
     }
 
-    char** matches_cstyle=(char**)malloc(sizeof(char*)*matches.size()+1);
-    matches_cstyle[matches.size()]=NULL;
+    char * match=((index<matches.size()) ? (strdup(matches[index++].data())) : NULL); //Post-fix increment to fetch the corect index for the next call
 
-    for(size_t i{};i<matches.size();++i){
-      matches_cstyle[i]=(char *)malloc(sizeof(char)*matches[i].size());
-      memcpy(matches_cstyle[i],matches[i].data(),matches[i].size()+1); //Include the null-terminator
+    return match;
+  }
+
+  char** command_completion(const char * text,int start,int end){
+
+    char ** matches=NULL;
+
+    if(start==0){
+      matches=rl_completion_matches(text,command_generator);
     }
-    return matches_cstyle;
+    return matches;
   }
 
   void insert_path_executables(void){
@@ -138,7 +147,7 @@ namespace AutoComplete{
       insert(cmd);
     }
     insert_path_executables();
-    rl_attempted_completion_function=rl_builtin_completion_function;
+    rl_attempted_completion_function=command_completion;
   }
 
 };
@@ -889,8 +898,6 @@ int main() {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
-  // std::string path=std::string(std::getenv("PATH")); //For now assume the path is constant
-
   const std::set<std::string> builtins(AutoComplete::builtins.begin(),AutoComplete::builtins.end());
 
   AutoComplete::init_builtin_completion();
@@ -898,8 +905,7 @@ int main() {
   while(1){
     Shell_IO::restore_file_redirection();
 
-    rl_bind_key('\t',rl_complete); //I need to use a trie to support builtin command completion that is why
-    //rl_complete works for paths, but I also want completion for commands
+    rl_bind_key('\t',rl_complete);
 
     char * line_cstr=readline("$ ");
 
