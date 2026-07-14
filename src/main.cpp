@@ -777,17 +777,12 @@ std::optional<std::string> find_exec_path(const std::string & file,const std::st
     if(!std::filesystem::is_directory(buffer)) continue;
 
     std::string location=buffer+dir_pathsep+file;
-    std::filesystem::directory_entry entry{location};
 
-    if(!entry.exists()) continue;
-
-    std::filesystem::perms entry_permissions=entry.status().permissions();
-
-    if(!access(location.c_str(),X_OK)){
+    //Returns 0 to indicate file exists and have executable permissions
+    if(!access(location.c_str(),F_OK|X_OK)){
       return location;
-      }
-
     }
+  }
 
     return std::nullopt;
 }
