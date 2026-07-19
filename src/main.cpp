@@ -35,6 +35,10 @@ void print_errno_message(void){
       return;
 }
 
+inline std::optional<std::string> get_nth_token(const std::vector<std::string> & tokens,size_t n){
+  return (n<tokens.size()) ? (std::make_optional<std::string>(tokens[n])) : std::nullopt;
+}
+
 namespace AutoComplete{
   //Maybe pull out the struct stuff and make it a class? Add a constructor which contains the data that I want
   //Trie for the path seems quite similar
@@ -44,9 +48,10 @@ namespace AutoComplete{
     std::map<char,std::unique_ptr<node>> children;
   };
 
-  std::string path=getenv("PATH");
-  const std::vector<std::string> builtins={"cd","complete","echo","exit","pwd","type"};
+  std::string path=getenv("PATH"); //need to make dynamic since could be modified
+  const std::vector<std::string> builtins={"cd","complete","declare","echo","exit","jobs","history","pwd","type"};
 
+  std::map<std::string,std::string> custom_completer;
   std::unique_ptr<node> Trie=std::make_unique<node>();
 
   void insert(const std::string & text){
@@ -118,7 +123,8 @@ namespace AutoComplete{
 
     if(start==0){
       matches=rl_completion_matches(text,command_generator);
-    }
+    } //Might need to extract susbequence up to the first whitespace to get the command. Probably a way to get this info. LCP might be to sort. Completer is part of the autocomplete namespace
+    //Do I need execve or do I open and stream the file? No I am running the script as a program
     return matches;
   }
 
@@ -372,14 +378,6 @@ std::string trim_leading_and_trailing_whitespace(const std::string & input){
   return input.substr(new_start,new_length);
 
 }
-
-// void print_command_token_data(const std::vector<command_token> & tokens){
-
-//   for(auto &token:tokens){
-//     std::cout<<token.data<<"\n";
-//   }
-//   std::cout<<"-----------\n";
-// }
 
 
 void print_command_token_data(const std::vector<command_token> & tokens){
@@ -893,6 +891,93 @@ void change_directory(const std::vector<std::string> & tokens){
   }
 }
 
+std::optional<std::pair<char,bool>> extract_completer_flag(const std::vector<std::string> & tokens){
+  std::optional<std::string> flag_token=get_nth_token(tokens,1);
+
+  if(flag_token.has_value()){
+    std::string & flag_str=flag_token.value();
+    assert(!flag_str.empty());
+
+    if(flag_str.size()>2 || flag_str[0]!='-'){
+      return std::pair<char,bool>{'\0',false};
+    }
+    else{
+      return std::pair<char,bool>{flag_str[1],true};
+    }
+  }
+  else{
+    return std::nullopt;
+  }
+}
+
+
+inline void print_registered_completion(const std::string & command,const std::string & path){
+  std::cout<<"complete -C "<<path<<" "<<command<<"\n";
+}
+
+void print_custom_completer_bindings(void){
+
+  for(auto iter=AutoComplete::custom_completer.begin();iter!=AutoComplete::custom_completer.end();iter++){
+    print_registered_completion(iter->first,iter->second);
+  }
+}
+
+void configure_custom_completer(const std::vector<std::string> & tokens){
+  assert(tokens[0]=="complete");
+
+  std::optional<std::pair<char,bool>> flag_info=extract_completer_flag(tokens);
+
+  if(!flag_info.has_value()){
+    //complete has no additional arguments
+    print_custom_completer_bindings();
+    return;
+  }
+
+  auto [flag,well_formed]=flag_info.value();
+  if(!well_formed){
+    return;
+  }
+
+  switch (flag){
+    case ('C'):{
+      std::optional<std::string> path_optional=get_nth_token(tokens,2);
+      std::optional<std::string> command_optional=get_nth_token(tokens,3);
+
+      if(!path_optional.has_value() || !command_optional.has_value()) break;
+      std::string & path=path_optional.value();
+      std::string & command=command_optional.value();
+
+      AutoComplete::custom_completer[command]="\'"+path+"\'";
+
+      break;
+    }    
+    case ('p'):{
+      std::optional<std::string> command_optional=get_nth_token(tokens,2);
+      if(!command_optional.has_value()) break;
+      std::string & command=command_optional.value();
+
+      if(AutoComplete::custom_completer.contains(command)){
+        print_registered_completion(command,AutoComplete::custom_completer[command]);
+      }
+      else{
+        std::cerr<<"complete: "<<command<<": no completion specification\n";
+      }
+      break;
+    }
+    case ('r'):{
+      std::optional<std::string> command_optional=get_nth_token(tokens,2);
+      if(!command_optional.has_value()) break;
+
+      std::string & command=command_optional.value();
+      if(AutoComplete::custom_completer.contains(command)) AutoComplete::custom_completer.erase(command);
+      break;
+    }
+    default:
+      std::cerr<<"complete: "<<tokens[1]<<" invalid option\n";
+      break;
+  }
+}
+
 
 int main() {
   // Flush after every std::cout / std:cerr
@@ -920,26 +1005,40 @@ int main() {
     std::vector<std::string> all_tokens=parse_input(input);
 
     Shell_IO::set_file_redirection(all_tokens); //Might want to rename from all_tokens
+    //Think about rewrites a bit later
 
     std::vector<std::string> tokens=Shell_IO::filter_redirection_commands(all_tokens);
 
     std::string command=get_command(tokens);
-
-    if(command=="exit"){
-      exit(0);
+    //Compile time hasing
+    if(command=="cd"){
+      change_directory(tokens);
+    }
+    else if(command=="pwd"){
+      std::filesystem::path working_path=std::filesystem::current_path();
+      print_path(working_path);
     }
     else if(command=="echo"){
       echo_output(tokens);
     }
-    else if(command=="pwd"){
-     std::filesystem::path working_path=std::filesystem::current_path();
-     print_path(working_path);
+    else if(command=="jobs"){
+      //Implement this
+    }
+    else if(command=="history"){
+      //Implement this
     }
     else if(command=="type"){
       determine_type(tokens,AutoComplete::path,builtins);
     }
-    else if(command=="cd"){
-      change_directory(tokens);
+    else if(command=="complete"){
+      configure_custom_completer(tokens);
+      // std::cout<<"complete\n";
+    }
+    else if(command=="declare"){
+      //Implement this
+    }
+    else if(command=="exit"){
+      exit(0);
     }
     else{
       //Want to check if I can execute the program
