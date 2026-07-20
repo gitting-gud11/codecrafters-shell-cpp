@@ -119,52 +119,64 @@ namespace AutoComplete{
 
   bool command_has_custom_completer(const char * line_buffer){
     assert(line_buffer!=NULL);
-    char * line_buffer_dup=strdup(line_buffer);
-    // std::cout<<"\n";
-    // std::cout<<line_buffer_dup<<"\n";
-    char * saveptr;
-    char * command_cstr;
-    // assert(false); //Might have something to do with strtok_r?
-    // char *strtok_r(line_buffer_dup,rl_completer_word_break_characters,&saveptr); // Filters "" from '$' being included in the word break characters
-    // command_cstr=strtok_r(line_buffer_dup,rl_completer_word_break_characters,&saveptr);
-    //strtok is causing a segmentation fault
-    while((command_cstr=strtok_r(line_buffer_dup,rl_completer_word_break_characters,&saveptr)) !=NULL){
-      std::cout<<"\n"<<command_cstr<<"\n";
-    }
+    size_t num_word_break_characters=strlen(rl_completer_word_break_characters);
+    size_t buffer_length=strlen(line_buffer);
+    std::string command;
 
-    assert(command_cstr!=NULL);
-    // std::cout<<"\ncommand_cstr:"<<command_cstr<<"\n";
-    std::string command(command_cstr);
-    free(line_buffer_dup);
-    assert(false);
+    for(size_t i {};i<buffer_length;++i){
+      bool split_char=false;
+
+      for(size_t j {};j<num_word_break_characters;++j){
+        if(line_buffer[i]==rl_completer_word_break_characters[j]){
+          split_char=true;
+          break;
+        }
+      }
+
+      if(!split_char){
+        command.push_back(line_buffer[i]);
+      }
+      else if(split_char && (!command.empty())){
+        break;
+      }
+
+    }
+    //First non-empty segment constructed represents the command
+    //Structure of the loop accounts for offset before initial command ($ ) and potential opening quotes
+
+    assert(!command.empty());
     return (custom_completer.contains(command));
   }
 
   std::array<std::string,3> get_completer_script_arguments(const char * line_buffer,int start,int end){
-    char* prefix=(char *)malloc(sizeof(char)*start);
-    strncpy(prefix,line_buffer,start-1); //Padding for the prefix to be null-terminated
-    assert(prefix[start-1]=='\0');
+    size_t num_word_break_characters=strlen(rl_completer_word_break_characters);
     std::vector<std::string> words;
-    char * saveptr;
-    char * word=strtok_r(prefix,rl_completer_word_break_characters,&saveptr);
+    words.reserve(CMD_ARG_RESERVE);
+    std::string word;
+    word.reserve(start);
 
-    while(word!=NULL){
-      words.push_back(std::string(word));
-      word=strtok_r(prefix,rl_completer_word_break_characters,&saveptr);
+    for(size_t i {};i<(size_t)start;++i){
+      bool split_char=false;
+      for(size_t j {};j<num_word_break_characters;++j){
+        if(line_buffer[i]==rl_completer_word_break_characters[j]){
+          split_char=true;
+          break;
+        }
+      }
+      if(!split_char){
+        word.push_back(line_buffer[i]);
+      }
+      else if(split_char && (!word.empty())){
+        words.push_back(word);
+        word.clear();
+      }
     }
-    assert(words.size()>1);
-    free(prefix);
-    
-    std::array<std::string,3> command_line_arguments;
-    command_line_arguments[0]=std::string(words[1]); //commmand with custom completer ($ is the first identified token)
-    command_line_arguments[1]=std::string(line_buffer+start,line_buffer+end); //word being completed
+    assert(words.size()!=0);
+    std::array<std::string,3> command_line_arguments={"","",""};
+    command_line_arguments[0]=words[0]; //command with custom completer
+    command_line_arguments[1]=std::string(line_buffer+start,line_buffer+end);//word being completed
+    if(words.size()>1) command_line_arguments[2]=words[words.size()-1]; //Prior word
 
-    if(words.size()>1){
-      command_line_arguments[2]=std::string(words[words.size()-1]); //Prior word
-    }
-    else{
-      command_line_arguments[2]="";
-    }
     return command_line_arguments;
   }
 
@@ -195,12 +207,13 @@ namespace AutoComplete{
     std::array<std::string,3> command_line_arguments=get_completer_script_arguments(line_buffer,start,end); //likely have an issue in here
     std::string path=custom_completer[command_line_arguments[0]];
 
-    if(!access(path.c_str(),F_OK)){
+    //access returns non-zero on failure
+    if(access(path.c_str(),F_OK)){
       std::cerr<<"path:"<<path<<" does not exist\n";
       return NULL;
     }
 
-    if(!access(path.c_str(),X_OK)){
+    if(access(path.c_str(),X_OK)){
       std::cerr<<"path"<<path<<" does not have executable permissions\n";
       return NULL;
     }
