@@ -19,7 +19,7 @@
 //Bash documentation https://www.gnu.org/software/bash/manual/bash.html#Introduction
 #define CMD_ARG_RESERVE 10
 #define PATH_CNT_RESERVE 2048 //Estimate on a bound of executables in the path
-
+#define BUFFER_MAX 1024
 
 #ifdef _WIN32
 constexpr char os_pathsep=';';
@@ -117,15 +117,130 @@ namespace AutoComplete{
     return match;
   }
 
+  bool command_has_custom_completer(const char * text){
+    assert(text!=NULL);
+    char * text_dup=strdup(text);
+    char * saveptr;
+    char * command_cstr;
+    strtok_r(text_dup,rl_completer_word_break_characters,&saveptr); // Filters "" from '$' being included in the word break characters
+    command_cstr=strtok_r(text_dup,rl_completer_word_break_characters,&saveptr);
+    assert(command_cstr!=NULL);
+    std::string command(command_cstr);
+    free(text_dup);
+    return (custom_completer.contains(command));
+  }
+
+  std::array<std::string,3> get_completer_script_arguments(const char * text,int start,int end){
+    char* prefix=(char *)malloc(sizeof(char)*start);
+    strncpy(prefix,text,start);
+
+    std::vector<std::string> words;
+    char * saveptr;
+    char * word=strtok_r(prefix,rl_completer_word_break_characters,&saveptr);
+
+    while(word!=NULL){
+      words.push_back(std::string(word));
+      word=strtok_r(prefix,rl_completer_word_break_characters,&saveptr);
+    }
+    assert(words.size()>1);
+    free(prefix);
+    
+    std::array<std::string,3> command_line_arguments={"","",""};
+    command_line_arguments[0]=std::string(words[1]); //commmand with custom completer ($ is the first identified token)
+    command_line_arguments[1]=std::string(text+start,text+end); //word being completed
+
+    if(words.size()>1){
+      command_line_arguments[2]=std::string(words[words.size()-1]); //Prior word
+    }
+    return command_line_arguments;
+  }
+
+  char** construct_completions(std::string & result){
+    std::vector<std::string> completions;
+    std::stringstream stream(result);
+    std::string segement;
+
+    //Default behavior splits on newline character
+    while(std::getline(stream,segement)){
+      completions.push_back(segement);
+    }
+
+    sort(completions.begin(),completions.end());
+
+    char** candidates=(char **)malloc(sizeof(char*)*completions.size()+1);
+    candidates[completions.size()]=NULL;
+
+    for(size_t i {};i<completions.size();++i){
+      candidates[i]=strdup(completions[i].c_str());
+    }
+    return candidates;
+  }
+
+  char** perform_custom_completion(const char * text,int start,int end){
+    assert(start!=0);
+
+    std::array<std::string,3> command_line_arguments=get_completer_script_arguments(text,start,end);
+
+    std::string path=custom_completer[command_line_arguments[0]];
+
+    if(!access(path.c_str(),F_OK)){
+      std::cerr<<"path:"<<path<<" does not exist\n";
+      return NULL;
+    }
+
+    if(!access(path.c_str(),X_OK)){
+      std::cerr<<"path"<<path<<" does not have executable permissions\n";
+      return NULL;
+    }
+
+    std::string executeable=path+" "+command_line_arguments[0]+" "+command_line_arguments[1]+" "+command_line_arguments[2];
+
+    FILE* fp;
+    int status;
+    char buffer[BUFFER_MAX];
+    std::string result;
+    const char * executable_cstr=executeable.c_str();
+
+    fp=popen(executable_cstr,"r");
+    if(fp==NULL){
+      print_errno_message();
+      return NULL;
+    }
+
+    while(fgets(buffer,BUFFER_MAX,fp)!=NULL){
+      result+=buffer;
+    }
+
+    status=pclose(fp);
+    if(status==-1){
+      print_errno_message();
+    }
+
+    return construct_completions(result);
+
+  }
+
   char** command_completion(const char * text,int start,int end){
 
     char ** matches=NULL;
 
     if(start==0){
       matches=rl_completion_matches(text,command_generator);
-    } //Might need to extract susbequence up to the first whitespace to get the command. Probably a way to get this info. LCP might be to sort. Completer is part of the autocomplete namespace
-    //Do I need execve or do I open and stream the file? No I am running the script as a program
+      return matches;
+    }
+
+    if(!custom_completer.empty()){
+      //Try the custom completer
+      // matches=perform_custom_completion(text,start,end);
+      if(command_has_custom_completer(text)){
+        matches=perform_custom_completion(text,start,end);
+      }
+      else{
+        matches=rl_completion_matches(text,command_generator);
+      }
+    }
     return matches;
+
   }
 
   void insert_path_executables(void){
@@ -659,7 +774,7 @@ command_token assemble_token(std::vector<std::optional<char>> & argument, size_t
   token.start_index=start_idx+offset;
   token.end_index=end_idx-offset;
   assert(token.start_index<=token.end_index);
-  // std::cout<<"token.start_index="<<token.start_index<<" token.end_index="<<token.end_index<<" token_variant"<<token_variant_to_str(variant)<<"\n";
+
   token.variant=variant;
 
   argument.clear();
@@ -912,7 +1027,7 @@ std::optional<std::pair<char,bool>> extract_completer_flag(const std::vector<std
 
 
 inline void print_registered_completion(const std::string & command,const std::string & path){
-  std::cout<<"complete -C "<<path<<" "<<command<<"\n";
+  std::cout<<"complete -C "<<"\'"<<path<<"\' "<<command<<"\n";
 }
 
 void print_custom_completer_bindings(void){
@@ -947,7 +1062,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
       std::string & path=path_optional.value();
       std::string & command=command_optional.value();
 
-      AutoComplete::custom_completer[command]="\'"+path+"\'";
+      AutoComplete::custom_completer[command]=path;
 
       break;
     }    
@@ -988,29 +1103,29 @@ int main() {
 
   AutoComplete::init_builtin_completion();
 
+  rl_bind_key('\t',rl_complete);
+
   while(1){
     Shell_IO::restore_file_redirection();
 
-    rl_bind_key('\t',rl_complete);
-
     char * line_cstr=readline("$ ");
 
-    std::string line(line_cstr);
+    std::string rawline(line_cstr);
     free(line_cstr);
 
-    std::string input=trim_leading_and_trailing_whitespace(line);
+    std::string line=trim_leading_and_trailing_whitespace(rawline);
 
-    if(input.empty()) continue;
+    if(line.empty()) continue;
 
-    std::vector<std::string> all_tokens=parse_input(input);
+    std::vector<std::string> line_tokens=parse_input(line);
 
-    Shell_IO::set_file_redirection(all_tokens); //Might want to rename from all_tokens
+    Shell_IO::set_file_redirection(line_tokens); //Might want to rename from all_tokens
     //Think about rewrites a bit later
 
-    std::vector<std::string> tokens=Shell_IO::filter_redirection_commands(all_tokens);
+    std::vector<std::string> tokens=Shell_IO::filter_redirection_commands(line_tokens);
 
     std::string command=get_command(tokens);
-    //Compile time hasing
+    //Compile time hasing. Might add a dispatch table at the end. Issue with dispatch table is not all command evals have the same arguments
     if(command=="cd"){
       change_directory(tokens);
     }
@@ -1032,7 +1147,6 @@ int main() {
     }
     else if(command=="complete"){
       configure_custom_completer(tokens);
-      // std::cout<<"complete\n";
     }
     else if(command=="declare"){
       //Implement this
