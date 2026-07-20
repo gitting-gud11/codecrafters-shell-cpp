@@ -193,7 +193,7 @@ namespace AutoComplete{
     }
 
     if(completions.empty()){
-      return NULL; //Indicates no match found. Ensures that bel
+      return NULL; //Indicates no match found. Ensures that terminal bell is rung
     }
 
     sort(completions.begin(),completions.end());
