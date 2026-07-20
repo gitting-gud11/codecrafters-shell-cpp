@@ -3,23 +3,25 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include<map>
+#include <map>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
 #include <vector>
-#include<fcntl.h>
-#include<stdio.h>
-#include<readline/readline.h>
-#include<sys/wait.h>
-#include<system_error>
-#include<unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <readline/readline.h>
+#include <sys/wait.h>
+#include <system_error>
+#include <unistd.h>
 //Tries are ideal for autocomplete tasks make a file with an implementation for this data-structure when I get to the command completion phase
 //Bash documentation https://www.gnu.org/software/bash/manual/bash.html#Introduction
 #define CMD_ARG_RESERVE 10
 #define PATH_CNT_RESERVE 2048 //Estimate on a bound of executables in the path
 #define BUFFER_MAX 1024
+#define DIGIT_MAX 64
+#define OVERWRITE 1
 
 #ifdef _WIN32
 constexpr char os_pathsep=';';
@@ -210,7 +212,7 @@ namespace AutoComplete{
   char** perform_custom_completion(const char * line_buffer,int start,int end){
     assert(start!=0);
 
-    std::array<std::string,3> command_line_arguments=get_completer_script_arguments(line_buffer,start,end); //likely have an issue in here
+    std::array<std::string,3> command_line_arguments=get_completer_script_arguments(line_buffer,start,end);
     std::string path=custom_completer[command_line_arguments[0]];
 
     //access returns non-zero on failure
@@ -231,6 +233,20 @@ namespace AutoComplete{
     char buffer[BUFFER_MAX];
     std::string result;
     const char * executable_cstr=executeable.c_str();
+
+    char int_buffer[DIGIT_MAX];
+    snprintf(int_buffer,DIGIT_MAX,"%d",end);
+
+    if(setenv("COMP_LINE",line_buffer,OVERWRITE)){
+      print_errno_message();
+      return NULL;
+    }
+
+    if(setenv("COMP_POINT",int_buffer,OVERWRITE)){
+      print_errno_message();
+      return NULL;
+    }
+
 
     fp=popen(executable_cstr,"r");
     if(fp==NULL){
