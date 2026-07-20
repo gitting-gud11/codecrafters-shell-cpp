@@ -120,19 +120,22 @@ namespace AutoComplete{
   bool command_has_custom_completer(const char * text){
     assert(text!=NULL);
     char * text_dup=strdup(text);
+    // std::cout<<"\n";
+    // std::cout<<text_dup<<"\n";
     char * saveptr;
     char * command_cstr;
     strtok_r(text_dup,rl_completer_word_break_characters,&saveptr); // Filters "" from '$' being included in the word break characters
     command_cstr=strtok_r(text_dup,rl_completer_word_break_characters,&saveptr);
     assert(command_cstr!=NULL);
+    // std::cout<<"\ncommand_cstr:"<<command_cstr<<"\n";
     std::string command(command_cstr);
     free(text_dup);
     return (custom_completer.contains(command));
   }
 
-  std::array<std::string,3> get_completer_script_arguments(const char * text,int start,int end){
+  std::array<std::string,3> get_completer_script_arguments(const char * line_buffer,int start,int end){
     char* prefix=(char *)malloc(sizeof(char)*start);
-    strncpy(prefix,text,start);
+    strncpy(prefix,line_buffer,start);
 
     std::vector<std::string> words;
     char * saveptr;
@@ -145,12 +148,15 @@ namespace AutoComplete{
     assert(words.size()>1);
     free(prefix);
     
-    std::array<std::string,3> command_line_arguments={"","",""};
+    std::array<std::string,3> command_line_arguments;
     command_line_arguments[0]=std::string(words[1]); //commmand with custom completer ($ is the first identified token)
-    command_line_arguments[1]=std::string(text+start,text+end); //word being completed
+    command_line_arguments[1]=std::string(line_buffer+start,line_buffer+end); //word being completed
 
     if(words.size()>1){
       command_line_arguments[2]=std::string(words[words.size()-1]); //Prior word
+    }
+    else{
+      command_line_arguments[2]="";
     }
     return command_line_arguments;
   }
@@ -176,11 +182,10 @@ namespace AutoComplete{
     return candidates;
   }
 
-  char** perform_custom_completion(const char * text,int start,int end){
+  char** perform_custom_completion(const char * line_buffer,int start,int end){
     assert(start!=0);
 
-    std::array<std::string,3> command_line_arguments=get_completer_script_arguments(text,start,end);
-
+    std::array<std::string,3> command_line_arguments=get_completer_script_arguments(line_buffer,start,end);
     std::string path=custom_completer[command_line_arguments[0]];
 
     if(!access(path.c_str(),F_OK)){
@@ -231,9 +236,8 @@ namespace AutoComplete{
 
     if(!custom_completer.empty()){
       //Try the custom completer
-      // matches=perform_custom_completion(text,start,end);
-      if(command_has_custom_completer(text)){
-        matches=perform_custom_completion(text,start,end);
+      if(command_has_custom_completer(rl_line_buffer)){
+        matches=perform_custom_completion(rl_line_buffer,start,end);
       }
       else{
         matches=rl_completion_matches(text,command_generator);
