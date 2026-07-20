@@ -173,6 +173,13 @@ namespace AutoComplete{
         word.clear();
       }
     }
+
+    //Don't believe this should ever be the case. Might remove this
+    if(!word.empty()){
+      words.push_back(word);
+      word.clear();
+    }
+
     assert(words.size()!=0);
     std::array<std::string,3> command_line_arguments={"","",""};
     command_line_arguments[0]=words[0]; //command with custom completer
@@ -185,13 +192,11 @@ namespace AutoComplete{
   char** construct_completions(std::string & result){
     std::vector<std::string> completions;
     std::stringstream stream(result);
-    std::string segement;
+    // std::string segement;
 
     //Default behavior splits on newline character
-    while(std::getline(stream,segement)){
-      if(!segement.empty()){
-        completions.push_back(segement);
-      }
+    for(std::string segment;std::getline(stream,segment);){
+      if(!segment.empty()) completions.push_back(segment);
     }
 
     if(completions.empty()){
