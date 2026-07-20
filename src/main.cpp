@@ -117,26 +117,33 @@ namespace AutoComplete{
     return match;
   }
 
-  bool command_has_custom_completer(const char * text){
-    assert(text!=NULL);
-    char * text_dup=strdup(text);
+  bool command_has_custom_completer(const char * line_buffer){
+    assert(line_buffer!=NULL);
+    char * line_buffer_dup=strdup(line_buffer);
     // std::cout<<"\n";
-    // std::cout<<text_dup<<"\n";
+    // std::cout<<line_buffer_dup<<"\n";
     char * saveptr;
     char * command_cstr;
-    strtok_r(text_dup,rl_completer_word_break_characters,&saveptr); // Filters "" from '$' being included in the word break characters
-    command_cstr=strtok_r(text_dup,rl_completer_word_break_characters,&saveptr);
+    // assert(false); //Might have something to do with strtok_r?
+    // char *strtok_r(line_buffer_dup,rl_completer_word_break_characters,&saveptr); // Filters "" from '$' being included in the word break characters
+    // command_cstr=strtok_r(line_buffer_dup,rl_completer_word_break_characters,&saveptr);
+    //strtok is causing a segmentation fault
+    while((command_cstr=strtok_r(line_buffer_dup,rl_completer_word_break_characters,&saveptr)) !=NULL){
+      std::cout<<"\n"<<command_cstr<<"\n";
+    }
+
     assert(command_cstr!=NULL);
     // std::cout<<"\ncommand_cstr:"<<command_cstr<<"\n";
     std::string command(command_cstr);
-    free(text_dup);
+    free(line_buffer_dup);
+    assert(false);
     return (custom_completer.contains(command));
   }
 
   std::array<std::string,3> get_completer_script_arguments(const char * line_buffer,int start,int end){
     char* prefix=(char *)malloc(sizeof(char)*start);
-    strncpy(prefix,line_buffer,start);
-
+    strncpy(prefix,line_buffer,start-1); //Padding for the prefix to be null-terminated
+    assert(prefix[start-1]=='\0');
     std::vector<std::string> words;
     char * saveptr;
     char * word=strtok_r(prefix,rl_completer_word_break_characters,&saveptr);
@@ -185,7 +192,7 @@ namespace AutoComplete{
   char** perform_custom_completion(const char * line_buffer,int start,int end){
     assert(start!=0);
 
-    std::array<std::string,3> command_line_arguments=get_completer_script_arguments(line_buffer,start,end);
+    std::array<std::string,3> command_line_arguments=get_completer_script_arguments(line_buffer,start,end); //likely have an issue in here
     std::string path=custom_completer[command_line_arguments[0]];
 
     if(!access(path.c_str(),F_OK)){
