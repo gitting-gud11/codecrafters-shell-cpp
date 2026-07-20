@@ -187,7 +187,13 @@ namespace AutoComplete{
 
     //Default behavior splits on newline character
     while(std::getline(stream,segement)){
-      completions.push_back(segement);
+      if(!segement.empty()){
+        completions.push_back(segement);
+      }
+    }
+
+    if(completions.empty()){
+      return NULL; //Indicates no match found. Ensures that bel
     }
 
     sort(completions.begin(),completions.end());
