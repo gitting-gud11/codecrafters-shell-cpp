@@ -3,9 +3,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <list>
 #include <map>
 #include <optional>
 #include <print>
+#include <queue>
 #include <set>
 #include <sstream>
 #include <string>
@@ -43,6 +45,48 @@ inline std::optional<std::string> get_nth_token(const std::vector<std::string> &
 }
 
 namespace JobsManager{
+
+  struct job_info{
+    std::string prompt;
+    pid_t process_index;
+    size_t job_index;
+
+    job_info(){
+      prompt="";
+      process_index=0;
+      job_index=0;
+    }
+
+    job_info(std::string & line,pid_t pid,size_t index){
+      prompt=line;
+      process_index=pid;
+      job_index=index;
+    }
+  };
+
+  std::map<size_t,job_info> job_table;
+  std::priority_queue<size_t,std::vector<size_t>,std::greater<size_t>> job_assigner;
+  std::list<size_t> job_history;
+
+  size_t find_job_number(void){
+    if(job_assigner.empty()){
+      return job_table.size()+1;
+    }
+    else{
+      size_t smallest_index=job_assigner.top();
+      job_assigner.pop();
+      return smallest_index;
+    }
+  }
+
+  void register_process(std::string & line,pid_t pid){
+    size_t job_number=find_job_number();
+    job_info process_context(line,pid,job_number);
+    job_table[job_number]=process_context;
+    job_history.push_front(job_number);
+    std::println("[%zu] %d",job_number,pid);
+    
+  }
   
 }
 
@@ -989,9 +1033,7 @@ inline void  echo_output(const std::vector<std::string> & tokens){
   buffer.reserve(buffer_size); //Modifies the capacity not the size
 
   for(size_t i=1;i<tokens.size();++i){buffer+=tokens[i];buffer.push_back(' ');} 
-  buffer.push_back('\n');
-
-  std::cout<<buffer;
+  std::println("{}",buffer);
 }
 
 void determine_type(const std::vector<std::string> & tokens,const std::string & path){
@@ -1005,16 +1047,19 @@ void determine_type(const std::vector<std::string> & tokens,const std::string & 
   if(arg_type.empty()) return;
 
   if(builtins.contains(arg_type)){
-    std::cout<<arg_type<<" is a shell builtin\n";
+    std::println("{} is a shell builtin",arg_type);
+    // std::cout<<arg_type<<" is a shell builtin\n";
     return;
   }
 
   std::optional<std::string> exec_path=find_exec_path(arg_type,path);
   if(exec_path.has_value()){
-    std::cout<<arg_type<<" is "<<exec_path.value()<<"\n";
+    std::println("{} is {}",arg_type,exec_path.value());
+    // std::cout<<arg_type<<" is "<<exec_path.value()<<"\n";
   }
   else{
-    std::cerr<<arg_type<<": not found\n";
+    std::println("{}: not found",arg_type);
+    // std::cerr<<arg_type<<": not found\n";
   }
 }
 
@@ -1044,7 +1089,8 @@ void run_program(const std::vector<std::string> & tokens){
 
 inline void print_path(const std::filesystem::path & input_path){
 
-  std::cout<<(input_path.string())<<"\n";
+  // std::cout<<(input_path.string())<<"\n";
+  std::println("{}",input_path.string());
 }
 
 
@@ -1093,7 +1139,8 @@ std::optional<std::pair<char,bool>> extract_completer_flag(const std::vector<std
 
 
 inline void print_registered_completion(const std::string & command,const std::string & path){
-  std::cout<<"complete -C "<<"\'"<<path<<"\' "<<command<<"\n";
+  std::println("complete -C \'{}\' {}",path,command);
+  // std::cout<<"complete -C "<<"\'"<<path<<"\' "<<command<<"\n";
 }
 
 void print_custom_completer_bindings(void){
@@ -1217,6 +1264,39 @@ void eval(std::string & line){
 }
 
 
+inline bool is_background_job(std::string & line){
+  if(line.size()<2){
+    return false;
+  }
+  return (line.back()=='$' && line[line.size()-2]==' ');
+}
+
+void eval_background(std::string & line){
+  assert(line.size()>=2);
+  line.pop_back();
+  line.pop_back();
+
+  pid_t pid;
+  switch((pid=fork())){
+    case -1:
+      print_errno_message();
+      break;
+    case 0:{
+      //Child Process
+      JobsManager::register_process(line,pid);
+      eval(line);
+      exit(0); //End process once evaluation is completed
+      break;
+    }
+    default:{
+      //Parent Process
+      //Probably want to get the pid of the child process
+      break;
+    }
+
+  }
+}
+
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -1237,7 +1317,12 @@ int main() {
 
     if(line.empty()) continue;
 
-    eval(line);
+    if(is_background_job(line)){
+      eval_background(line);
+    }
+    else{
+      eval(line);
+    }
 
   }
 }
