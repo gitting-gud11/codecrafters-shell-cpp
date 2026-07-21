@@ -55,9 +55,7 @@ namespace AutoComplete{
   const std::vector<std::string> builtins={"cd","complete","declare","echo","exit","jobs","history","pwd","type"};
 
   std::map<std::string,std::string> custom_completer;
-  // std::vector<std::string> custom_completer_matches;
-  int custom_start_invoke=0;
-  int custom_end_invoke=0;
+  int custom_start_invoke, custom_end_invoke=0; //Support the custom generator interaction with Readline API
   std::unique_ptr<node> Trie=std::make_unique<node>();
 
   void insert(const std::string & text){
@@ -266,15 +264,7 @@ namespace AutoComplete{
 
   }
 
-  // void set_custom_completion_generator(const char * text, int start,int end){
-  //   std::vector<std::string> found_matches=perform_custom_completion(rl_line_buffer,start,end);
-
-  //   if(!custom_completer_matches.empty()){
-  //     custom_completer_matches.insert(custom_completer_matches.begin(),found_matches.begin(),found_matches.end());
-  //   }
-
-  // }
-
+  //Text argument is not relevant. This function is defined to interact with readline API
   char* custom_generator(const char * text, int state){
     static int index;
     static std::vector<std::string> matches;
@@ -282,7 +272,6 @@ namespace AutoComplete{
     if(!state){
       index=0;
       matches.clear();
-      // text_str=text;
       matches=perform_custom_completion(rl_line_buffer,custom_start_invoke,custom_end_invoke);
     }
 
@@ -342,7 +331,6 @@ namespace AutoComplete{
     }
     insert_path_executables();
     rl_attempted_completion_function=command_completion;
-    // custom_completer_matches.reserve(PATH_CNT_RESERVE);
   }
 
 };
