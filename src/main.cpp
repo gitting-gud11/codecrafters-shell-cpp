@@ -184,7 +184,7 @@ namespace AutoComplete{
     std::array<std::string,3> command_line_arguments={"","",""};
     command_line_arguments[0]=words[0]; //command with custom completer
     command_line_arguments[1]=std::string(line_buffer+start,line_buffer+end);//word being completed
-    if(words.size()>1) command_line_arguments[2]=words[words.size()-1]; //Prior word
+    command_line_arguments[2]=words[words.size()-1]; //Prior word
 
     return command_line_arguments;
   }
@@ -195,9 +195,7 @@ namespace AutoComplete{
     // std::string segement;
 
     //Default behavior splits on newline character
-    for(std::string segment;std::getline(stream,segment);){
-      if(!segment.empty()) completions.push_back(segment);
-    }
+    for(std::string segment;std::getline(stream,segment);) completions.push_back(segment);
 
     if(completions.empty()){
       return NULL; //Indicates no match found. Ensures that terminal bell is rung
@@ -205,7 +203,7 @@ namespace AutoComplete{
 
     sort(completions.begin(),completions.end());
 
-    char** candidates=(char **)malloc(sizeof(char*)*completions.size()+1);
+    char** candidates=(char **)malloc(sizeof(char*)*(completions.size()+1));
     candidates[completions.size()]=NULL;
 
     for(size_t i {};i<completions.size();++i){
