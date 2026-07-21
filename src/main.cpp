@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <print>
 #include <set>
 #include <sstream>
 #include <string>
@@ -54,6 +55,9 @@ namespace AutoComplete{
   const std::vector<std::string> builtins={"cd","complete","declare","echo","exit","jobs","history","pwd","type"};
 
   std::map<std::string,std::string> custom_completer;
+  // std::vector<std::string> custom_completer_matches;
+  int custom_start_invoke=0;
+  int custom_end_invoke=0;
   std::unique_ptr<node> Trie=std::make_unique<node>();
 
   void insert(const std::string & text){
@@ -174,45 +178,37 @@ namespace AutoComplete{
       }
     }
 
-    //Don't believe this should ever be the case. Might remove this
     if(!word.empty()){
       words.push_back(word);
       word.clear();
     }
 
     assert(words.size()!=0);
-    std::array<std::string,3> command_line_arguments={"","",""};
-    command_line_arguments[0]=words[0]; //command with custom completer
+    std::array<std::string,3> command_line_arguments;
+    command_line_arguments[0]=words.front(); //command with custom completer
     command_line_arguments[1]=std::string(line_buffer+start,line_buffer+end);//word being completed
-    command_line_arguments[2]=words[words.size()-1]; //Prior word
+    command_line_arguments[2]=words.back();
 
     return command_line_arguments;
   }
 
-  char** construct_completions(std::string & result){
+  std::vector<std::string> construct_completions(std::string & result){
     std::vector<std::string> completions;
     std::stringstream stream(result);
-    // std::string segement;
 
     //Default behavior splits on newline character
     for(std::string segment;std::getline(stream,segment);) completions.push_back(segment);
 
     if(completions.empty()){
-      return NULL; //Indicates no match found. Ensures that terminal bell is rung
+      return {}; //Indicates no match found. Ensures that terminal bell is rung
     }
 
     sort(completions.begin(),completions.end());
+    return completions;
 
-    char** candidates=(char **)malloc(sizeof(char*)*(completions.size()+1));
-    candidates[completions.size()]=NULL;
-
-    for(size_t i {};i<completions.size();++i){
-      candidates[i]=strdup(completions[i].c_str());
-    }
-    return candidates;
   }
 
-  char** perform_custom_completion(const char * line_buffer,int start,int end){
+  std::vector<std::string> perform_custom_completion(const char * line_buffer,int start,int end){
     assert(start!=0);
 
     std::array<std::string,3> command_line_arguments=get_completer_script_arguments(line_buffer,start,end);
@@ -221,12 +217,12 @@ namespace AutoComplete{
     //access returns non-zero on failure
     if(access(path.c_str(),F_OK)){
       std::cerr<<"path:"<<path<<" does not exist\n";
-      return NULL;
+      return {};
     }
 
     if(access(path.c_str(),X_OK)){
       std::cerr<<"path"<<path<<" does not have executable permissions\n";
-      return NULL;
+      return {};
     }
 
     std::string executeable=path+" "+command_line_arguments[0]+" "+command_line_arguments[1]+" "+command_line_arguments[2];
@@ -242,19 +238,19 @@ namespace AutoComplete{
 
     if(setenv("COMP_LINE",line_buffer,OVERWRITE)){
       print_errno_message();
-      return NULL;
+      return {};
     }
 
     if(setenv("COMP_POINT",int_buffer,OVERWRITE)){
       print_errno_message();
-      return NULL;
+      return {};
     }
 
 
     fp=popen(executable_cstr,"r");
     if(fp==NULL){
       print_errno_message();
-      return NULL;
+      return {};
     }
 
     while(fgets(buffer,BUFFER_MAX,fp)!=NULL){
@@ -270,8 +266,33 @@ namespace AutoComplete{
 
   }
 
-  char** command_completion(const char * text,int start,int end){
+  // void set_custom_completion_generator(const char * text, int start,int end){
+  //   std::vector<std::string> found_matches=perform_custom_completion(rl_line_buffer,start,end);
 
+  //   if(!custom_completer_matches.empty()){
+  //     custom_completer_matches.insert(custom_completer_matches.begin(),found_matches.begin(),found_matches.end());
+  //   }
+
+  // }
+
+  char* custom_generator(const char * text, int state){
+    static int index;
+    static std::vector<std::string> matches;
+
+    if(!state){
+      index=0;
+      matches.clear();
+      // text_str=text;
+      matches=perform_custom_completion(rl_line_buffer,custom_start_invoke,custom_end_invoke);
+    }
+
+    char * match=((index<matches.size()) ? (strdup(matches[index++].data())) : NULL); //Post-fix increment to fetch the corect index for the next call
+
+    return match;
+
+  }
+
+  char** command_completion(const char * text,int start,int end){
     char ** matches=NULL;
 
     if(start==0){
@@ -282,7 +303,9 @@ namespace AutoComplete{
     if(!custom_completer.empty()){
       //Try the custom completer
       if(command_has_custom_completer(rl_line_buffer)){
-        matches=perform_custom_completion(rl_line_buffer,start,end);
+        custom_start_invoke=start;
+        custom_end_invoke=end;
+        matches=rl_completion_matches(text,custom_generator);
       }
       else{
         matches=rl_completion_matches(text,command_generator);
@@ -313,12 +336,13 @@ namespace AutoComplete{
     }
   }
 
-  void init_builtin_completion(void){
+  void init_completion(void){
     for(auto & cmd:builtins){
       insert(cmd);
     }
     insert_path_executables();
     rl_attempted_completion_function=command_completion;
+    // custom_completer_matches.reserve(PATH_CNT_RESERVE);
   }
 
 };
@@ -1150,7 +1174,7 @@ int main() {
 
   const std::set<std::string> builtins(AutoComplete::builtins.begin(),AutoComplete::builtins.end());
 
-  AutoComplete::init_builtin_completion();
+  AutoComplete::init_completion();
 
   rl_bind_key('\t',rl_complete);
 
