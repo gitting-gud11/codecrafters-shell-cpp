@@ -42,6 +42,10 @@ inline std::optional<std::string> get_nth_token(const std::vector<std::string> &
   return (n<tokens.size()) ? (std::make_optional<std::string>(tokens[n])) : std::nullopt;
 }
 
+namespace JobsManager{
+  
+}
+
 namespace AutoComplete{
   //Maybe pull out the struct stuff and make it a class? Add a constructor which contains the data that I want
   //Trie for the path seems quite similar
@@ -990,7 +994,8 @@ inline void  echo_output(const std::vector<std::string> & tokens){
   std::cout<<buffer;
 }
 
-void determine_type(const std::vector<std::string> & tokens,const std::string & path,const std::set<std::string> & builtins){
+void determine_type(const std::vector<std::string> & tokens,const std::string & path){
+  static const std::set<std::string> builtins(AutoComplete::builtins.begin(),AutoComplete::builtins.end());
   std::string arg_type;
 
   if(tokens.size()>1){
@@ -1155,28 +1160,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
 }
 
 
-int main() {
-  // Flush after every std::cout / std:cerr
-  std::cout << std::unitbuf;
-  std::cerr << std::unitbuf;
-
-  const std::set<std::string> builtins(AutoComplete::builtins.begin(),AutoComplete::builtins.end());
-
-  AutoComplete::init_completion();
-
-  rl_bind_key('\t',rl_complete);
-
-  while(1){
-    Shell_IO::restore_file_redirection();
-
-    char * line_cstr=readline("$ ");
-
-    std::string rawline(line_cstr);
-    free(line_cstr);
-
-    std::string line=trim_leading_and_trailing_whitespace(rawline);
-
-    if(line.empty()) continue;
+void eval(std::string & line){
 
     std::vector<std::string> line_tokens=parse_input(line);
 
@@ -1204,7 +1188,7 @@ int main() {
       //Implement this
     }
     else if(command=="type"){
-      determine_type(tokens,AutoComplete::path,builtins);
+      determine_type(tokens,AutoComplete::path);
     }
     else if(command=="complete"){
       configure_custom_completer(tokens);
@@ -1230,6 +1214,30 @@ int main() {
 
     }
 
+}
+
+
+int main() {
+  // Flush after every std::cout / std:cerr
+  std::cout << std::unitbuf;
+  std::cerr << std::unitbuf;
+
+  AutoComplete::init_completion();
+  rl_bind_key('\t',rl_complete);
+
+  while(1){
+    Shell_IO::restore_file_redirection();
+
+    char * line_cstr=readline("$ ");
+
+    std::string rawline(line_cstr);
+    free(line_cstr);
+
+    std::string line=trim_leading_and_trailing_whitespace(rawline);
+
+    if(line.empty()) continue;
+
+    eval(line);
 
   }
 }
