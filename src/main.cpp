@@ -53,7 +53,7 @@ namespace JobsManager{
       job_index=0;
     }
 
-    job_info(std::string & line,pid_t pid,size_t index){
+    job_info(const std::string & line,pid_t pid,size_t index){
       prompt=line;
       process_index=pid;
       job_index=index;
@@ -75,13 +75,87 @@ namespace JobsManager{
     }
   }
 
-  void register_process(std::string & line,pid_t pid){
+  void register_process(const std::string & line,pid_t pid){
     size_t job_number=find_job_number();
     job_info process_context(line,pid,job_number);
     job_table[job_number]=process_context;
     job_history.push_front(job_number);
     std::println("[{}] {}",job_number,pid);
     
+  }
+
+  char get_job_marker (size_t job_index){
+    assert(!job_history.empty());
+
+    if(job_index==job_history.front()){
+      return '+';
+    }
+    else if((job_history.size()>1) && (job_index==(*std::next(job_history.begin())))){
+      return '-';
+    }
+    else{
+      return ' ';
+    }
+  }
+
+  inline void print_job(job_info & running_job){
+    std::println("[{}]{}  Running                 {}",running_job.job_index,get_job_marker(running_job.job_index),running_job.prompt);
+  }
+
+  void print_job_by_specifier(std::string & token){
+    size_t offset=1;
+    if(token[0]!='%'){
+      --offset;
+      std::println(stderr,"-bash: jobs: warning: {}: job specification requires leading `%'",token);
+    }
+
+    bool well_formed=true;
+    for(size_t i=offset;i<token.size();++i){
+      if(!isdigit(token[i])){
+        well_formed=false;
+        break;
+      }
+    }
+
+    well_formed&=(!job_history.empty()); //Query cannot resolve if no current jobs
+
+    if(well_formed && token=="%"){
+      print_job(job_table[job_history.front()]);
+      return;
+    }
+
+    size_t job_index=0; //convention is to use strictly positive integers in the table, so this is safe
+    if(well_formed){
+      job_index=std::stoull(std::string(token.begin()+offset,token.end()));
+    }
+
+    if(well_formed && (job_table.contains(job_index))){
+      print_job(job_table[job_index]);
+    }
+    else{
+      std::println(stderr,"-bash: jobs: {}: no such job",token);
+    }
+  }
+
+  void print_all_running_jobs(void){
+    //Map is sorted ensures processes are printed in order with respect to their job number
+    for(auto iter=job_table.begin();iter!=job_table.end();iter++){
+      //job number information encoded in the job_type struct
+      print_job(iter->second);
+    }
+  }
+
+  void list_jobs(std::vector<std::string> & tokens){
+    if(tokens.size()==1){
+      //Prompt was jobs
+      JobsManager::print_all_running_jobs();
+    }
+    else{
+      //Loop across each token check it is well formed
+      for(size_t i=1;i<tokens.size();++i){
+        JobsManager::print_job_by_specifier(tokens[i]);
+      }
+    }
   }
   
 }
@@ -1220,7 +1294,7 @@ void eval(std::string & line){
       echo_output(tokens);
     }
     else if(command=="jobs"){
-      //Implement this
+      JobsManager::list_jobs(tokens);
     }
     else if(command=="history"){
       //Implement this
@@ -1272,7 +1346,7 @@ void execute_background_job(const std::string & line){
 
   if(execvp(argv[0],const_cast<char* const*>(argv.data()))) print_errno_message();
 
-  exit(errno);
+  exit(errno); //Might look into the printing format delay
 }
 
 void eval_background(const std::string & line){
@@ -1290,7 +1364,7 @@ void eval_background(const std::string & line){
     }
     default:{
       //Parent Process
-      JobsManager::register_process(background_line,pid); //fork returns the child process to parent
+      JobsManager::register_process(line,pid); //fork returns the child process id to parent
       break;
     }
 
