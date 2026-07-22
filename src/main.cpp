@@ -26,17 +26,13 @@
 #define DIGIT_MAX 64
 #define OVERWRITE 1
 
-#ifdef _WIN32
-constexpr char os_pathsep=';';
-#else
-constexpr char os_pathsep=':';
-#endif
+constexpr char os_pathsep=':'; //Unix-Based Operating Systems
 
 constexpr char dir_pathsep=std::filesystem::path::preferred_separator;
 
 void print_errno_message(void){
       std::string error_message=std::system_category().message(errno);
-      std::cerr<<error_message<<"\n";
+      std::println(stderr,"{}",error_message);
       return;
 }
 
@@ -262,12 +258,12 @@ namespace AutoComplete{
 
     //access returns non-zero on failure
     if(access(path.c_str(),F_OK)){
-      std::cerr<<"path:"<<path<<" does not exist\n";
+      std::println(stderr,"path {} does not exist",path);
       return {};
     }
 
     if(access(path.c_str(),X_OK)){
-      std::cerr<<"path"<<path<<" does not have executable permissions\n";
+      std::println(stderr,"path {} does not have executable permissions",path);
       return {};
     }
 
@@ -669,7 +665,7 @@ parse_mode get_resulting_state(char letter,parse_mode mode){
       return parse_mode::SINGLE_QUOTE; //Identical to unquoted case
     
       default:
-        std::cerr<<"Invalid token sequence single-quote case\n";
+        std::println(stderr,"Invalid token sequence single-quote case");
         assert(false);
         break;
    }
@@ -689,7 +685,7 @@ parse_mode get_resulting_state(char letter,parse_mode mode){
         return parse_mode::DOUBLE_QUOTE; //Identical to unquoted case
     
       default:
-        std::cerr<<"Invalid token sequence double-quote case\n";
+        std::println(stderr,"Invalid token sequence double-quote case");
         assert(false);
         break;
    } 
@@ -699,8 +695,8 @@ parse_mode get_resulting_state(char letter,parse_mode mode){
     assert(mode!=parse_mode::ESCAPE);
     return ((mode==parse_mode::WHITESPACE) ? (parse_mode::UNQUOTED) : mode);
   }
-  //Whitespace treated literally only in single and double quoted regions
   else if(letter==' '){
+    //Whitespace treated literally only in single and double quoted regions
     return ((mode==parse_mode::SINGLE_QUOTE || mode==parse_mode::DOUBLE_QUOTE)) ? mode : parse_mode::WHITESPACE;
   }
   else{
@@ -861,7 +857,7 @@ token_variant parse_mode_to_token_variant(parse_mode mode){
     default:
       break;
   }
-  std::cerr<<"Invalid parse mode variant\n";
+  std::println(stderr,"Invalid parse mode variant");
   assert(false);
 }
 
@@ -1048,18 +1044,15 @@ void determine_type(const std::vector<std::string> & tokens,const std::string & 
 
   if(builtins.contains(arg_type)){
     std::println("{} is a shell builtin",arg_type);
-    // std::cout<<arg_type<<" is a shell builtin\n";
     return;
   }
 
   std::optional<std::string> exec_path=find_exec_path(arg_type,path);
   if(exec_path.has_value()){
     std::println("{} is {}",arg_type,exec_path.value());
-    // std::cout<<arg_type<<" is "<<exec_path.value()<<"\n";
   }
   else{
     std::println("{}: not found",arg_type);
-    // std::cerr<<arg_type<<": not found\n";
   }
 }
 
@@ -1089,7 +1082,6 @@ void run_program(const std::vector<std::string> & tokens){
 
 inline void print_path(const std::filesystem::path & input_path){
 
-  // std::cout<<(input_path.string())<<"\n";
   std::println("{}",input_path.string());
 }
 
@@ -1114,7 +1106,7 @@ void change_directory(const std::vector<std::string> & tokens){
     std::filesystem::current_path(updated_directory);
   }
   else{
-    std::cerr<<"cd: "<<updated_directory<<": No such file or directory\n";
+    std::println(stderr,"cd: {}: No such file or directory",updated_directory);
   }
 }
 
@@ -1140,7 +1132,6 @@ std::optional<std::pair<char,bool>> extract_completer_flag(const std::vector<std
 
 inline void print_registered_completion(const std::string & command,const std::string & path){
   std::println("complete -C \'{}\' {}",path,command);
-  // std::cout<<"complete -C "<<"\'"<<path<<"\' "<<command<<"\n";
 }
 
 void print_custom_completer_bindings(void){
@@ -1188,7 +1179,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
         print_registered_completion(command,AutoComplete::custom_completer[command]);
       }
       else{
-        std::cerr<<"complete: "<<command<<": no completion specification\n";
+        std::println(stderr,"complete: {}: no completion specification",command);
       }
       break;
     }
@@ -1201,7 +1192,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
       break;
     }
     default:
-      std::cerr<<"complete: "<<tokens[1]<<" invalid option\n";
+      std::println(stderr,"complete: {} invalid option",tokens[1]);
       break;
   }
 }
@@ -1254,9 +1245,7 @@ void eval(std::string & line){
         run_program(tokens);
       }
       else{
-        std::string command_failed=command+": command not found\n";
-        std::cerr<<command_failed;
-
+        std::println(stderr,"{}: command not found",command);
       }
 
     }
