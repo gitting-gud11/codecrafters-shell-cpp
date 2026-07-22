@@ -80,7 +80,7 @@ namespace JobsManager{
     job_info process_context(line,pid,job_number);
     job_table[job_number]=process_context;
     job_history.push_front(job_number);
-    std::println("[%zu] %d",job_number,pid);
+    std::println("[{}] {}",job_number,pid);
     
   }
   
@@ -1252,19 +1252,32 @@ void eval(std::string & line){
 
 }
 
-
-inline bool is_background_job(std::string & line){
+inline bool is_background_job(const std::string & line){
   if(line.size()<2){
     return false;
   }
-  return (line.back()=='$' && line[line.size()-2]==' ');
+  return (line.back()=='&' && line[line.size()-2]==' ');
 }
 
-void eval_background(std::string & line){
-  assert(line.size()>=2);
-  line.pop_back();
-  line.pop_back();
 
+void execute_background_job(const std::string & line){
+  std::vector<std::string> tokens=parse_input(line);
+
+  std::vector<const char*> argv(tokens.size()+1);
+
+  for(size_t i {};i<tokens.size();++i){
+    argv[i]=tokens[i].c_str();
+  }
+  argv[tokens.size()]=NULL;
+
+  if(execvp(argv[0],const_cast<char* const*>(argv.data()))) print_errno_message();
+
+  exit(errno);
+}
+
+void eval_background(const std::string & line){
+  assert(line.size()>=2);
+  std::string background_line=trim_leading_and_trailing_whitespace(std::string(line.begin(),line.end()-2));
   pid_t pid;
   switch((pid=fork())){
     case -1:
@@ -1272,14 +1285,12 @@ void eval_background(std::string & line){
       break;
     case 0:{
       //Child Process
-      JobsManager::register_process(line,pid);
-      eval(line);
-      exit(0); //End process once evaluation is completed
+      execute_background_job(background_line);
       break;
     }
     default:{
       //Parent Process
-      //Probably want to get the pid of the child process
+      JobsManager::register_process(background_line,pid); //fork returns the child process to parent
       break;
     }
 
