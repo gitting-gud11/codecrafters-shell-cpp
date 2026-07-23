@@ -112,6 +112,8 @@ namespace JobsManager{
 
   //Think about print formatting a bit later
   void manage_and_update_job(job_info & child_process){
+    if(child_process.mode==process_state::TERMINATED) return; //Do not attempt to reap a process multiple times
+
     int status;
     pid_t return_pid=waitpid(child_process.process_index,&status,WNOHANG);
     if(return_pid==-1){
@@ -218,6 +220,9 @@ namespace JobsManager{
 
   void refresh_jobs(void){
     assert(job_table.size()==job_history.size());
+    
+    if(job_table.empty()) return;
+
     std::set<size_t> terminated_jobs;
 
     for(auto iter=job_table.begin();iter!=job_table.end();iter++){
