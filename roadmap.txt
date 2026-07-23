@@ -1,0 +1,13 @@
+Dynamic Maintenance of Path:
+Consider rechecking the path everytime aftr the type command
+Involve considerations to revising the prefix-tree
+
+Two considerations:
+Include additional fields for a node that supports recognizing matches from a query and those marked false would want to erase
+Know that if a node gets deleted that all of its descendants will be deleted, so can detach from that point
+Might also be easier to rebuild the tree from scratch
+
+State Modification Approach:
+For every executable in the path if it's matched mark the data node as true
+If the path is not matched add to a list of paths that will be inserted
+(This could be a viable consideration)
