@@ -223,7 +223,7 @@ namespace JobsManager{
     for(auto iter=job_table.begin();iter!=job_table.end();iter++){
       auto & job_entry=iter->second;
       assert(iter->first==job_entry.job_index);
-
+      manage_and_update_job(job_entry);
       if(job_entry.updated_state){
         print_job(job_entry);
         job_entry.updated_state=false;
