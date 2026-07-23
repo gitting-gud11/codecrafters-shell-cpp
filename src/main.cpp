@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <fcntl.h>
+#include <string.h>
 #include <stdio.h>
 #include <readline/readline.h>
 #include <sys/wait.h>
@@ -25,6 +26,7 @@
 #define BUFFER_MAX 1024
 #define DIGIT_MAX 64
 #define OVERWRITE 1
+#define BACKGROUND_OUTPUT_PADDING 24
 
 constexpr char os_pathsep=':'; //Unix-Based Operating Systems
 
@@ -42,22 +44,46 @@ inline std::optional<std::string> get_nth_token(const std::vector<std::string> &
 
 namespace JobsManager{
 
+  enum class process_state{
+    RUNNING,
+    STOPPED,
+    TERMINATED
+  };
+
   struct job_info{
+    std::string running_prompt;
     std::string prompt;
     pid_t process_index;
     size_t job_index;
+    process_state mode;
+    std::optional<int> exit_code;
+    std::optional<int> received_signal;
+    bool updated_state;
 
     job_info(){
+      running_prompt="";
       prompt="";
       process_index=0;
       job_index=0;
+      mode=process_state::RUNNING;
+      exit_code=std::nullopt;
+      received_signal=std::nullopt;
+      updated_state=false;
     }
 
-    job_info(const std::string & line,pid_t pid,size_t index){
+    job_info(const std::string & running_line,const std::string & line,pid_t pid,size_t index){
+      running_prompt=running_line;
       prompt=line;
       process_index=pid;
       job_index=index;
+      mode=process_state::RUNNING;
+      exit_code=std::nullopt;
+      received_signal=std::nullopt;
+      updated_state=false;
+
     }
+    //Consider moving reseting the updated_state to method or free function
+    //Consider moving printing to a method
   };
 
   std::map<size_t,job_info> job_table;
@@ -75,13 +101,53 @@ namespace JobsManager{
     }
   }
 
-  void register_process(const std::string & line,pid_t pid){
+  void register_process(const std::string & running_line,const std::string & line,pid_t pid){
     size_t job_number=find_job_number();
-    job_info process_context(line,pid,job_number);
+    job_info process_context(running_line,line,pid,job_number);
     job_table[job_number]=process_context;
     job_history.push_front(job_number);
     std::println("[{}] {}",job_number,pid);
     
+  }
+
+  //Think about print formatting a bit later
+  void manage_and_update_job(job_info & child_process){
+    int status;
+    pid_t return_pid=waitpid(child_process.process_index,&status,WNOHANG);
+    if(return_pid==-1){
+      print_errno_message();
+    }
+    else if(return_pid==0){
+      //Child process state unchanged
+    }
+    else if(return_pid==child_process.process_index){
+      //Child Process state updated
+      child_process.updated_state=true;
+
+      if(WIFEXITED(status)){
+        child_process.mode=process_state::TERMINATED;
+        child_process.exit_code=WEXITSTATUS(status);
+      }
+
+      if(WIFSTOPPED(status)){
+        child_process.mode=process_state::STOPPED;
+      }
+
+      if(WIFCONTINUED(status)){
+        child_process.mode=process_state::RUNNING;
+      }
+
+      if(WIFSIGNALED(status)){
+        child_process.mode=process_state::TERMINATED;
+        int received_signal=WTERMSIG(received_signal);
+        child_process.received_signal=received_signal;
+      }
+      
+    }
+    else{
+      std::println(stderr,"Unmatched return_pid case");
+    }
+
   }
 
   char get_job_marker (size_t job_index){
@@ -98,11 +164,90 @@ namespace JobsManager{
     }
   }
 
-  inline void print_job(job_info & running_job){
-    std::println("[{}]{}  Running                 {}",running_job.job_index,get_job_marker(running_job.job_index),running_job.prompt);
+  void print_terminated_job(job_info & queried_job){
+    assert(queried_job.mode==process_state::TERMINATED);
+
+    if(queried_job.exit_code.has_value()){
+      int exit_code=queried_job.exit_code.value();
+
+      if(exit_code){
+        std::string exit_string="Exit"+(std::to_string(exit_code));
+        int padding=BACKGROUND_OUTPUT_PADDING-exit_string.size();
+        std::println("[{}]{}  {}{}",queried_job.job_index,get_job_marker(queried_job.job_index),(exit_string+std::string(padding,' ')),
+        queried_job.prompt);
+      }
+      else{
+        std::println("[{}]{}  {}{}",queried_job.job_index,get_job_marker(queried_job.job_index),("Done"+std::string(20,' ')),
+        queried_job.prompt);
+      }
+
+      return;
+    }
+    //Process terminated from a signal
+    assert(queried_job.received_signal.has_value());
+    int term_signal=queried_job.received_signal.value();
+    //strsignal is not thread-safe though shell manages concurrency with processes
+    std::string signal_str=(std::string(strsignal(term_signal)))+": "+std::to_string(term_signal);
+    int padding=BACKGROUND_OUTPUT_PADDING-signal_str.size();
+    if(padding <0) padding=0;
+    std::println("{}{}",signal_str,queried_job.prompt);
   }
 
-  void print_job_by_specifier(std::string & token){
+  void print_job(job_info & queried_job){
+    const process_state current_mode=queried_job.mode;
+
+    //Pad to 24 characters
+    switch (current_mode){
+      case (process_state::RUNNING):{
+        std::println("[{}]{}  {}{}",queried_job.job_index,get_job_marker(queried_job.job_index),("Running"+std::string(17,' ')),
+        queried_job.running_prompt);
+        break;
+      }
+      case (process_state::STOPPED):{
+        std::println("[{}]{}  {}{}",queried_job.job_index,get_job_marker(queried_job.job_index),("Stopped"+std::string(17,' ')),
+        queried_job.prompt);
+        break;
+      }
+      default:{
+        //Terminated Case
+        print_terminated_job(queried_job);
+        break;
+      }
+    }
+  }
+
+  void refresh_jobs(void){
+    assert(job_table.size()==job_history.size());
+    std::set<size_t> terminated_jobs;
+
+    for(auto iter=job_table.begin();iter!=job_table.end();iter++){
+      auto & job_entry=iter->second;
+      assert(iter->first==job_entry.job_index);
+
+      if(job_entry.updated_state){
+        print_job(job_entry);
+        job_entry.updated_state=false;
+      }
+
+      if(job_entry.mode==process_state::TERMINATED){
+        terminated_jobs.insert(job_entry.job_index);
+      }
+    }
+
+    auto job_table_predicate=[&](const std::pair<size_t,job_info> & table_entry){return terminated_jobs.contains(table_entry.first);};
+    auto job_history_predicate=[&](size_t job_index){return terminated_jobs.contains(job_index);};
+    std::erase_if(job_table,job_table_predicate);
+    std::erase_if(job_history,job_history_predicate);
+
+    for(auto iter=terminated_jobs.begin();iter!=terminated_jobs.end();iter++){
+      size_t terminated_job_index=(*iter);
+      job_assigner.push(terminated_job_index);
+    }
+    return;
+
+  }
+
+  std::optional<size_t> find_job_by_specifier(std::string & token){
     size_t offset=1;
     if(token[0]!='%'){
       --offset;
@@ -117,23 +262,17 @@ namespace JobsManager{
       }
     }
 
-    well_formed&=(!job_history.empty()); //Query cannot resolve if no current jobs
+    if(!well_formed || job_history.empty()) return std::nullopt; //Query cannot resolve if no background jobs
 
-    if(well_formed && token=="%"){
-      print_job(job_table[job_history.front()]);
-      return;
-    }
+    if(token=="%") return (job_history.front());
 
-    size_t job_index=0; //convention is to use strictly positive integers in the table, so this is safe
-    if(well_formed){
-      job_index=std::stoull(std::string(token.begin()+offset,token.end()));
-    }
+    size_t job_index=std::stoull(std::string(token.begin()+offset,token.end()));
 
-    if(well_formed && (job_table.contains(job_index))){
-      print_job(job_table[job_index]);
+    if(job_table.contains(job_index)){
+      return job_index;
     }
     else{
-      std::println(stderr,"-bash: jobs: {}: no such job",token);
+      return std::nullopt;
     }
   }
 
@@ -141,7 +280,10 @@ namespace JobsManager{
     //Map is sorted ensures processes are printed in order with respect to their job number
     for(auto iter=job_table.begin();iter!=job_table.end();iter++){
       //job number information encoded in the job_type struct
+      job_info & queried_job=iter->second;
+      manage_and_update_job(queried_job);
       print_job(iter->second);
+      if(queried_job.updated_state) queried_job.updated_state=false; //Might want to wrap this into a method
     }
   }
 
@@ -149,16 +291,23 @@ namespace JobsManager{
     if(tokens.size()==1){
       //Prompt was jobs
       JobsManager::print_all_running_jobs();
+      return;
     }
-    else{
-      //Loop across each token check it is well formed
-      for(size_t i=1;i<tokens.size();++i){
-        JobsManager::print_job_by_specifier(tokens[i]);
+    //Loop across each argument token
+    for(size_t i=1;i<tokens.size();++i){
+      std::optional<size_t> found_job_index=find_job_by_specifier(tokens[i]);
+      if(found_job_index.has_value()){
+        job_info & queried_job=job_table[found_job_index.value()];
+        manage_and_update_job(queried_job);
+        print_job(queried_job);
+        if(queried_job.updated_state) queried_job.updated_state=false;
+      }
+      else{
+          std::println(stderr,"-bash: jobs: {}: no such job",tokens[i]);
       }
     }
   }
-  
-}
+};
 
 namespace AutoComplete{
   //Maybe pull out the struct stuff and make it a class? Add a constructor which contains the data that I want
@@ -1364,7 +1513,7 @@ void eval_background(const std::string & line){
     }
     default:{
       //Parent Process
-      JobsManager::register_process(line,pid); //fork returns the child process id to parent
+      JobsManager::register_process(line,background_line,pid); //fork returns the child process id to parent
       break;
     }
 
@@ -1381,6 +1530,7 @@ int main() {
 
   while(1){
     Shell_IO::restore_file_redirection();
+    JobsManager::refresh_jobs();
 
     char * line_cstr=readline("$ ");
 
