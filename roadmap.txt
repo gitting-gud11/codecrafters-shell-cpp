@@ -11,3 +11,9 @@ State Modification Approach:
 For every executable in the path if it's matched mark the data node as true
 If the path is not matched add to a list of paths that will be inserted
 (This could be a viable consideration)
+
+
+Background Output while readline is active:
+Output from background processes can interfere with the readline buffer.
+Don't think much can be done if it's while the process is executing, but there is likely a way to
+polish this for something like echo "Hello" &
