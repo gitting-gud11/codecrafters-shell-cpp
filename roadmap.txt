@@ -17,3 +17,10 @@ Background Output while readline is active:
 Output from background processes can interfere with the readline buffer.
 Don't think much can be done if it's while the process is executing, but there is likely a way to
 polish this for something like echo "Hello" &
+
+Readline and Signal Handling:
+SIGNT and SIGTSTP called subsequently produce a segmentation fault.
+Explore the readline library further to see how to resolve this issue
+https://stackoverflow.com/questions/78852197/how-can-i-properly-reprint-a-readline-prompt-on-sigint
+SIGINT appears to be a more significant issue. While in readline calling this signal results in my inability to move the
+cursor to the position prior to where the call was made

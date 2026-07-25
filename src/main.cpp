@@ -16,6 +16,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <readline/readline.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <system_error>
 #include <unistd.h>
@@ -37,6 +38,23 @@ void print_errno_message(void){
       std::println(stderr,"{}",error_message);
       return;
 }
+
+void block_SIGINT_and_SIGTSTP(void){
+  struct sigaction process_action={0};
+  process_action.sa_flags=SA_RESTART;
+  process_action.sa_handler=SIG_IGN;
+  sigaction(SIGINT,&process_action,NULL);
+  sigaction(SIGTSTP,&process_action,NULL);
+}
+
+void restore_SIGINT_and_SIGTSTP(void){
+  struct sigaction process_action={0};
+  process_action.sa_flags=SA_RESTART;
+  process_action.sa_handler=SIG_DFL;
+  sigaction(SIGINT,&process_action,NULL);
+  sigaction(SIGTSTP,&process_action,NULL);
+}
+
 
 inline std::optional<std::string> get_nth_token(const std::vector<std::string> & tokens,size_t n){
   return (n<tokens.size()) ? (std::make_optional<std::string>(tokens[n])) : std::nullopt;
@@ -1299,6 +1317,7 @@ void run_program(const std::vector<std::string> & tokens){
       break;
     case 0:
       //Child Process
+      restore_SIGINT_and_SIGTSTP();
       if(execvp(argv[0],const_cast<char* const*>(argv.data()))) print_errno_message();
       break;
     default:
@@ -1513,6 +1532,7 @@ void eval_background(const std::string & line){
       break;
     case 0:{
       //Child Process
+      restore_SIGINT_and_SIGTSTP();
       execute_background_job(background_line);
       break;
     }
@@ -1529,6 +1549,7 @@ int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+  block_SIGINT_and_SIGTSTP();
 
   AutoComplete::init_completion();
   rl_bind_key('\t',rl_complete);
@@ -1545,7 +1566,7 @@ int main() {
     std::string line=trim_leading_and_trailing_whitespace(rawline);
 
     if(line.empty()) continue;
-
+    //Might simplify piping if I parse the line ahead of time?
     if(is_background_job(line)){
       eval_background(line);
     }
