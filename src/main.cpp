@@ -39,7 +39,7 @@ void print_errno_message(void){
       return;
 }
 
-void block_SIGINT_and_SIGTSTP(void){
+void ignore_SIGINT_and_SIGTSTP(void){
   struct sigaction process_action={0};
   process_action.sa_flags=SA_RESTART;
   process_action.sa_handler=SIG_IGN;
@@ -1545,7 +1545,7 @@ int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
-  block_SIGINT_and_SIGTSTP();
+  ignore_SIGINT_and_SIGTSTP();
 
   AutoComplete::init_completion();
   rl_bind_key('\t',rl_complete);

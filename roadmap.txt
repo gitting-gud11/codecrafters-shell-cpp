@@ -24,3 +24,9 @@ Explore the readline library further to see how to resolve this issue
 https://stackoverflow.com/questions/78852197/how-can-i-properly-reprint-a-readline-prompt-on-sigint
 SIGINT appears to be a more significant issue. While in readline calling this signal results in my inability to move the
 cursor to the position prior to where the call was made
+
+Might need a signal handler to move foreground job to background. The issue is that child process gets terminated, but the parent
+process is waiting for the child so the shell is frozen
+
+Dispatch Table:
+Alternative to if else if ... chain. Consider this at a much later stage.
