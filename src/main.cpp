@@ -1558,7 +1558,17 @@ int main() {
     Shell_IO::restore_file_redirection();
     JobsManager::refresh_jobs();
 
+    sigset_t readline_block,readline_restore;
+    sigemptyset(&readline_block);
+    sigaddset(&readline_block,SIGINT);
+    sigaddset(&readline_block,SIGTSTP);
+
+    //Adds SIGINT and SIGTSTP to block signal set from readline_block.
+    //Saves the prior block signal set into readline_restore
+    sigprocmask(SIG_BLOCK,&readline_block,&readline_restore);
     char * line_cstr=readline("$ ");
+    //Blocket set is set to readline restore unblocking SIGINT and SIGTSTP
+    sigprocmask(SIG_SETMASK,&readline_restore,NULL);
 
     std::string rawline(line_cstr);
     free(line_cstr);
