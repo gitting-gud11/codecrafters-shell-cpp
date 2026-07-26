@@ -579,16 +579,12 @@ namespace AutoComplete{
       return matches;
     }
 
-    if(!custom_completer.empty()){
-      //Try the custom completer
-      if(command_has_custom_completer(rl_line_buffer)){
-        custom_start_invoke=start;
-        custom_end_invoke=end;
-        matches=rl_completion_matches(text,custom_generator);
-      }
-      else{
-        matches=rl_completion_matches(text,command_generator);
-      }
+    //Default behavior is to perform filename completion for subsequent words unless
+    //there is an associated completion script for the command
+    if(!custom_completer.empty() && command_has_custom_completer(rl_line_buffer)){
+      custom_start_invoke=start;
+      custom_end_invoke=end;
+      matches=rl_completion_matches(text,custom_generator);
     }
     return matches;
 
