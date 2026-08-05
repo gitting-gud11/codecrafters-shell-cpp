@@ -1298,7 +1298,7 @@ void determine_type(const std::vector<std::string> & tokens,const std::string & 
   }
 }
 
-void run_program(const std::vector<std::string> & tokens){
+void run_program(const std::string & pathname,const std::vector<std::string> & tokens){
   std::vector<const char*> argv(tokens.size()+1);
 
   for(size_t i {};i<tokens.size();++i){
@@ -1314,7 +1314,7 @@ void run_program(const std::vector<std::string> & tokens){
     case 0:
       //Child Process
       restore_SIGINT_and_SIGTSTP();
-      if(execvp(argv[0],const_cast<char* const*>(argv.data()))) print_errno_message();
+      if(execv(pathname.data(),const_cast<char* const*>(argv.data()))) print_errno_message();
       break;
     default:
       //Parent Process
@@ -1482,10 +1482,9 @@ void eval(std::string & line){
     }
     else{
       //Want to check if I can execute the program
-      //Might change to execv since I already have the path
       std::optional<std::string> exec_path=find_exec_path(command,AutoComplete::path);
       if(exec_path.has_value()){
-        run_program(tokens);
+        run_program(exec_path.value(),tokens);
       }
       else{
         std::println(stderr,"{}: command not found",command);
