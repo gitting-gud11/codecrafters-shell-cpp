@@ -1315,6 +1315,7 @@ void run_program(const std::string & pathname,const std::vector<std::string> & t
       //Child Process
       restore_SIGINT_and_SIGTSTP();
       if(execv(pathname.data(),const_cast<char* const*>(argv.data()))) print_errno_message();
+      exit(errno);
       break;
     default:
       //Parent Process
@@ -1513,8 +1514,7 @@ void execute_background_job(const std::string & line){
   argv[tokens.size()]=NULL;
 
   if(execvp(argv[0],const_cast<char* const*>(argv.data()))) print_errno_message();
-
-  exit(errno); //Might look into the printing format delay
+  exit(errno);
 }
 
 void eval_background(const std::string & line){
