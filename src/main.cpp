@@ -20,8 +20,9 @@
 #include <sys/wait.h>
 #include <system_error>
 #include <unistd.h>
-//Tries are ideal for autocomplete tasks make a file with an implementation for this data-structure when I get to the command completion phase
+
 //Bash documentation https://www.gnu.org/software/bash/manual/bash.html#Introduction
+#define CMD_PIPELINE_RESERVE 5
 #define CMD_ARG_RESERVE 10
 #define PATH_CNT_RESERVE 2048 //Estimate on a bound of executables in the path
 #define BUFFER_MAX 1024
@@ -1442,7 +1443,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
 }
 
 
-void eval(std::string & line){
+void eval(const std::string & line){
 
     std::vector<std::string> line_tokens=parse_input(line);
 
@@ -1540,6 +1541,60 @@ void eval_background(const std::string & line){
   }
 }
 
+bool may_have_literal_pipe_characters(const std::string & line){
+  if(line.empty()) return false;
+  if(line[0]=='|') return true;
+
+  for(size_t i=1;i<line.size();++i){
+    //Check is not complete unless line is in canonical form, but is sound
+    if(line[i]=='|' && line[i-1]!='\\') return true;
+  }
+  return false;
+}
+
+std::vector<std::string> construct_command_pipeline(const std::string & command_line){
+  if(!may_have_literal_pipe_characters(command_line)){
+    //Pipe character is not common in command line, so this optimizes against unecessary parsing
+    return {command_line};
+  }
+
+  std::vector<std::string> command_pipeline;
+  command_pipeline.reserve(CMD_PIPELINE_RESERVE);
+  std::string buffer;
+
+  std::vector<parse_mode> line_classifier=classify_token_regions(command_line);
+  std::string canonical_line=preprocess_character_stream(command_line,line_classifier);
+  std::vector<parse_mode> canonical_classifer=classify_token_regions(canonical_line);
+  assert(!canonical_line.empty());
+  buffer.reserve(canonical_line.size());
+  buffer.push_back(canonical_line[0]); //First character cannot be a pipe operator
+  assert(canonical_line[0]!='|');
+
+  for(size_t i=1;i<canonical_line.size();++i){
+    if(canonical_line[i]=='|' && canonical_line[i-1]!='\\' && canonical_classifer[i]==parse_mode::WHITESPACE){
+      //Delimiter reached
+      command_pipeline.push_back(buffer);
+      buffer.clear();
+    }
+    else{
+      buffer.push_back(canonical_line[i]);
+    }
+  }
+
+  if(!buffer.empty()){
+    command_pipeline.push_back(buffer);
+    buffer.clear();
+  }
+
+  return command_pipeline;
+
+}
+
+
+void eval_pipeline(const std::vector<std::string> & command_pipeline){
+
+}
+
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -1570,9 +1625,22 @@ int main() {
 
     std::string line=trim_leading_and_trailing_whitespace(rawline);
 
-    if(line.empty()) continue;
-    //Might simplify piping if I parse the line ahead of time?
-    if(is_background_job(line)){
+    if(line.empty()){
+      continue;
+    }
+    else if(line[0]=='|'){
+      std::println(stderr,"-bash: syntax error near unexpected token `|'");
+      continue;
+
+    }
+
+    std::vector<std::string> command_pipeline=construct_command_pipeline(line);
+
+    if(command_pipeline.size()>1){
+      //Evaluate the sequence of commands
+      eval_pipeline(command_pipeline);
+    }
+    else if(is_background_job(line)){
       eval_background(line);
     }
     else{
