@@ -41,6 +41,14 @@ void print_errno_message(void){
       return;
 }
 
+template <typename T>
+void print_vector(const std::vector<T> & vec){
+  for(auto &val:vec){
+    std::print("{} ",val);
+  }
+  std::println("");
+}
+
 namespace Shell_IO{
 
   int stdin_copy=-1;
@@ -209,7 +217,7 @@ void restore_SIGINT_and_SIGTSTP(void){
   process_action.sa_handler=SIG_DFL;
   sigaction(SIGINT,&process_action,NULL);
   sigaction(SIGTSTP,&process_action,NULL);
-  }
+}
 
 
 inline std::optional<std::string> get_nth_token(const std::vector<std::string> & tokens,size_t n){
@@ -499,6 +507,7 @@ namespace AutoComplete{
 
   std::string path=getenv("PATH"); //need to make dynamic since could be modified
   const std::vector<std::string> builtins={"cd","complete","declare","echo","exit","jobs","history","pwd","type"};
+  const std::set<std::string> builtins_set=std::set<std::string>(builtins.begin(),builtins.end());
 
   std::map<std::string,std::string> custom_completer;
   int custom_start_invoke, custom_end_invoke=0; //Support the custom generator interaction with Readline API
@@ -1295,7 +1304,6 @@ inline void  echo_output(const std::vector<std::string> & tokens){
 }
 
 void determine_type(const std::vector<std::string> & tokens,const std::string & path){
-  static const std::set<std::string> builtins(AutoComplete::builtins.begin(),AutoComplete::builtins.end());
   std::string arg_type;
 
   if(tokens.size()>1){
@@ -1304,7 +1312,7 @@ void determine_type(const std::vector<std::string> & tokens,const std::string & 
 
   if(arg_type.empty()) return;
 
-  if(builtins.contains(arg_type)){
+  if(AutoComplete::builtins_set.contains(arg_type)){
     std::println("{} is a shell builtin",arg_type);
     return;
   }
@@ -1590,7 +1598,7 @@ std::vector<std::string> construct_command_pipeline(const std::string & command_
   assert(canonical_line[0]!='|');
 
   for(size_t i=1;i<canonical_line.size();++i){
-    if(canonical_line[i]=='|' && canonical_line[i-1]!='\\' && canonical_classifer[i]==Parser::parse_mode::WHITESPACE){
+    if(canonical_line[i]=='|' && canonical_line[i-1]!='\\' && canonical_classifer[i]==Parser::parse_mode::UNQUOTED){
       //Delimiter reached
       command_pipeline.push_back(buffer);
       buffer.clear();
@@ -1610,8 +1618,75 @@ std::vector<std::string> construct_command_pipeline(const std::string & command_
 }
 
 
-void eval_pipeline(const std::vector<std::string> & command_pipeline){
+bool setup_intermediate_pipe(const std::vector<const char*> & command_tokens,std::vector<pid_t> & child_processes,int & read_descriptor){
 
+  int pipe_file_descriptors[2];
+
+  if(pipe(pipe_file_descriptors)==-1){
+    print_errno_message();
+    return false;
+  }
+
+  pid_t pid;
+  switch (pid=fork()){
+    case -1:{
+      print_errno_message();
+      return false;
+    }
+    case 0:{
+      dup2(pipe_file_descriptors[0],read_descriptor);
+
+      if(execvp(command_tokens[0],const_cast<char* const*>(command_tokens.data()))){
+        print_errno_message();
+        exit(errno); //File descriptors closed when program terminates
+      }
+      break;
+    }
+    default:{
+      read_descriptor=pipe_file_descriptors[1];
+      close(pipe_file_descriptors[0]);
+      close(pipe_file_descriptors[1]);
+      child_processes.push_back(pid);
+      break;
+    }
+  }
+
+  return true;
+}
+
+void eval_pipeline(const std::vector<std::string> & command_pipeline){
+  std::vector<pid_t> child_processes;
+  child_processes.reserve(command_pipeline.size());
+  int read_file_descriptor=STDIN_FILENO;
+
+  std::vector<std::vector<std::string>> pipeline_tokens (command_pipeline.size());
+  std::transform(command_pipeline.begin(),command_pipeline.end(),pipeline_tokens.begin(),
+  [](const std::string & line){return Parser::parse_input(Parser::trim_leading_and_trailing_whitespace(line));});
+
+  //Command line arguments are typically short, so not worth the overhead of parallel execution
+  auto static extract_data=[](const std::vector<std::string> & tokens){
+    std::vector<const char*> tokens_data(tokens.size()+1);
+    tokens_data[tokens.size()]=NULL;
+    for(size_t i {};i<tokens.size();++i){
+      tokens_data[i]=tokens[i].data();
+    }
+    return tokens_data; //The pointers in the output refer to the strings owned by tokens
+  };
+
+  std::vector<std::vector<const char*>> pipeline_exec_tokens(pipeline_tokens.size());
+  std::transform(pipeline_tokens.begin(),pipeline_tokens.end(),pipeline_exec_tokens.begin(),extract_data);
+
+  for(size_t i=0;i<command_pipeline.size()-1;++i){
+    //Modifies child_processes vector
+    //Updates the read_file_descriptor for subsequent piping
+    if(!setup_intermediate_pipe(pipeline_exec_tokens[i],child_processes,read_file_descriptor)){
+      break;
+    }
+  }
+
+  for(auto &child:child_processes){
+    waitpid(child,NULL,0);
+  }
 }
 
 int main() {
