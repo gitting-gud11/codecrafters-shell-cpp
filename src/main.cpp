@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 //Bash documentation https://www.gnu.org/software/bash/manual/bash.html#Introduction
+//use clang-format at the end with -i flag probably use LLVM formatting
 #define CMD_PIPELINE_RESERVE 5
 #define CMD_ARG_RESERVE 10
 #define PATH_CNT_RESERVE 2048 //Estimate on a bound of executables in the path
@@ -40,6 +41,160 @@ void print_errno_message(void){
       return;
 }
 
+namespace Shell_IO{
+
+  int stdin_copy=-1;
+  int stdout_copy=-1;
+  int stderr_copy=-1;
+  
+  std::vector<std::pair<int,int>> file_aliases;
+
+  inline void copy_standard_streams(void){
+
+    if((stdin_copy=dup(STDIN_FILENO))==-1){
+      print_errno_message();
+      exit(errno);
+    }
+    if((stdout_copy=dup(STDOUT_FILENO))==-1){
+      print_errno_message();
+      exit(errno);
+    }
+    if((stderr_copy=dup(STDERR_FILENO))==-1){
+      print_errno_message();
+      exit(errno);
+    }
+  }
+
+  inline std::pair<std::string,std::string> redirection_tokenization(const std::string & command){
+    assert(!command.empty());
+    auto iter=std::find_if_not(command.begin(),command.end(),isdigit);
+
+    if(iter==command.begin()){
+      return std::pair{"",command};
+    }
+    else if(iter==command.end()){
+      return std::pair{command,""};
+    }
+    else{
+      return std::pair{std::string(command.begin(),iter),std::string(iter,command.end())};
+    }
+  }
+
+  std::optional<std::pair<int,bool>> determine_redirection(const std::string & command){
+    auto [file_descriptor,redirection_variant]=redirection_tokenization(command);
+
+    if(redirection_variant.empty() || redirection_variant.size()>2) return std::nullopt;
+
+    if(file_descriptor.empty() && redirection_variant=="<"){
+      return std::pair{STDIN_FILENO,false};
+    }
+    //Check what is going on with append mode
+    bool append_mode;
+    if(redirection_variant==">"){
+      append_mode=false;
+    }
+    else if(redirection_variant==">>"){
+      append_mode=true;
+    }
+    else{
+      return std::nullopt;
+    }
+
+    int descriptor=(file_descriptor.empty()) ? STDOUT_FILENO : (stoi(file_descriptor));
+    return std::pair{descriptor,append_mode};
+  }
+
+  bool is_redirection(const std::string & command){
+    return (determine_redirection(command).has_value());
+  }
+
+  //Might want to make this more robust in the future since redirection is not necessarily the suffix
+  std::vector<std::string> filter_redirection_commands(const std::vector<std::string> & commands){
+    auto iter=std::find_if_not(commands.begin(),commands.end(),[](const std::string & s){return !is_redirection(s);});
+
+    if(iter==commands.end()){
+      return commands;
+    }
+    else{
+      return std::vector<std::string>(commands.begin(),iter);
+    }
+
+  }
+
+  void redirect_channel(int fd,const bool append_flag,const char* filename){
+
+    int flags=O_CREAT;
+
+    if(fd){
+      flags|=O_WRONLY;
+    }
+    else{
+
+      flags|=O_RDONLY;
+    }
+
+    if(append_flag){
+      flags|=O_APPEND;
+    }
+    else{
+      flags|=O_TRUNC;
+    }
+
+    int save_fd;
+    if((save_fd=dup(fd))==-1){
+      print_errno_message();
+      return;
+    }
+
+    int file_fd;
+    if((file_fd=open(filename,flags,S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH))==-1){
+      print_errno_message();
+      close(save_fd);
+      return;
+    }
+
+    if(dup2(file_fd,fd)==-1){
+      print_errno_message();
+      close(file_fd);
+      close(save_fd);
+      return;
+    }
+    
+    if(close(file_fd)==-1){
+      print_errno_message();
+      close(save_fd);
+      return;
+    }
+
+    file_aliases.push_back(std::pair{save_fd,fd});
+  } 
+  void set_file_redirection(const std::vector<std::string> & commands){
+
+    for(size_t i=0;i<commands.size()-1;++i){
+      auto redirect_descriptor=determine_redirection(commands[i]);
+      if(redirect_descriptor.has_value()){
+        auto [fd,append_mode]=redirect_descriptor.value();
+        redirect_channel(fd,append_mode,commands[i+1].data());
+      }
+    }
+  }
+
+
+  void restore_file_redirection(void){
+
+    for(auto [old_fd,new_fd]:file_aliases){
+      if(dup2(old_fd,new_fd)==-1){
+        print_errno_message();
+      }
+
+      if(close(old_fd)==-1){
+        print_errno_message();
+      }
+    }
+    file_aliases.clear();
+  }
+};
+
 void ignore_SIGINT_and_SIGTSTP(void){
   struct sigaction process_action={0};
   process_action.sa_flags=SA_RESTART;
@@ -54,7 +209,7 @@ void restore_SIGINT_and_SIGTSTP(void){
   process_action.sa_handler=SIG_DFL;
   sigaction(SIGINT,&process_action,NULL);
   sigaction(SIGTSTP,&process_action,NULL);
-}
+  }
 
 
 inline std::optional<std::string> get_nth_token(const std::vector<std::string> & tokens,size_t n){
@@ -621,143 +776,7 @@ namespace AutoComplete{
   }
 
 };
-
-
-//Think about error handling
-namespace Shell_IO{
-  std::vector<std::pair<int,int>> file_aliases;
-
-  inline std::pair<std::string,std::string> redirection_tokenization(const std::string & command){
-    assert(!command.empty());
-    auto iter=std::find_if_not(command.begin(),command.end(),isdigit);
-
-    if(iter==command.begin()){
-      return std::pair{"",command};
-    }
-    else if(iter==command.end()){
-      return std::pair{command,""};
-    }
-    else{
-      return std::pair{std::string(command.begin(),iter),std::string(iter,command.end())};
-    }
-  }
-
-  std::optional<std::pair<int,bool>> determine_redirection(const std::string & command){
-    auto [file_descriptor,redirection_variant]=redirection_tokenization(command);
-
-    if(redirection_variant.empty() || redirection_variant.size()>2) return std::nullopt;
-
-    if(file_descriptor.empty() && redirection_variant=="<"){
-      return std::pair{STDIN_FILENO,false};
-    }
-    //Check what is going on with append mode
-    bool append_mode;
-    if(redirection_variant==">"){
-      append_mode=false;
-    }
-    else if(redirection_variant==">>"){
-      append_mode=true;
-    }
-    else{
-      return std::nullopt;
-    }
-
-    int descriptor=(file_descriptor.empty()) ? STDOUT_FILENO : (stoi(file_descriptor));
-    return std::pair{descriptor,append_mode};
-  }
-
-  bool is_redirection(const std::string & command){
-    return (determine_redirection(command).has_value());
-  }
-
-  //Might want to make this more robust in the future since redirection is not necessarily the suffix
-  std::vector<std::string> filter_redirection_commands(const std::vector<std::string> & commands){
-    auto iter=std::find_if_not(commands.begin(),commands.end(),[](const std::string & s){return !is_redirection(s);});
-
-    if(iter==commands.end()){
-      return commands;
-    }
-    else{
-      return std::vector<std::string>(commands.begin(),iter);
-    }
-
-  }
-
-  void redirect_channel(int fd,const bool append_flag,const char* filename){
-
-    int flags=O_CREAT;
-
-    if(fd){
-      flags|=O_WRONLY;
-    }
-    else{
-
-      flags|=O_RDONLY;
-    }
-
-    if(append_flag){
-      flags|=O_APPEND;
-    }
-    else{
-      flags|=O_TRUNC;
-    }
-
-    int save_fd;
-    if((save_fd=dup(fd))==-1){
-      print_errno_message();
-      return;
-    }
-
-    int file_fd;
-    if((file_fd=open(filename,flags,S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH))==-1){
-      print_errno_message();
-      close(save_fd);
-      return;
-    }
-
-    if(dup2(file_fd,fd)==-1){
-      print_errno_message();
-      close(file_fd);
-      close(save_fd);
-      return;
-    }
-    
-    if(close(file_fd)==-1){
-      print_errno_message();
-      close(save_fd);
-      return;
-    }
-
-    file_aliases.push_back(std::pair{save_fd,fd});
-  } 
-  void set_file_redirection(const std::vector<std::string> & commands){
-
-    for(size_t i=0;i<commands.size()-1;++i){
-      auto redirect_descriptor=determine_redirection(commands[i]);
-      if(redirect_descriptor.has_value()){
-        auto [fd,append_mode]=redirect_descriptor.value();
-        redirect_channel(fd,append_mode,commands[i+1].data());
-      }
-    }
-  }
-
-
-  void restore_file_redirection(void){
-
-    for(auto [old_fd,new_fd]:file_aliases){
-      if(dup2(old_fd,new_fd)==-1){
-        print_errno_message();
-      }
-
-      if(close(old_fd)==-1){
-        print_errno_message();
-      }
-    }
-    file_aliases.clear();
-  }
-};
-
-
+namespace Parser{
 enum class parse_mode{
   UNQUOTED,
   SINGLE_QUOTE,
@@ -1227,7 +1246,7 @@ std::vector<std::string> parse_input(const std::string & input){
   return command_line_arguments;
  
 }
-
+}
 
 inline std::string get_command(const std::vector<std::string> & tokens){
   std::string command;
@@ -1445,7 +1464,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
 
 void eval(const std::string & line){
 
-    std::vector<std::string> line_tokens=parse_input(line);
+    std::vector<std::string> line_tokens=Parser::parse_input(line);
 
     Shell_IO::set_file_redirection(line_tokens); //Might want to rename from all_tokens
     //Think about rewrites a bit later
@@ -1505,7 +1524,7 @@ inline bool is_background_job(const std::string & line){
 
 
 void execute_background_job(const std::string & line){
-  std::vector<std::string> tokens=parse_input(line);
+  std::vector<std::string> tokens=Parser::parse_input(line);
 
   std::vector<const char*> argv(tokens.size()+1);
 
@@ -1520,7 +1539,7 @@ void execute_background_job(const std::string & line){
 
 void eval_background(const std::string & line){
   assert(line.size()>=2);
-  std::string background_line=trim_leading_and_trailing_whitespace(std::string(line.begin(),line.end()-2));
+  std::string background_line=Parser::trim_leading_and_trailing_whitespace(std::string(line.begin(),line.end()-2));
   pid_t pid;
   switch((pid=fork())){
     case -1:
@@ -1562,16 +1581,16 @@ std::vector<std::string> construct_command_pipeline(const std::string & command_
   command_pipeline.reserve(CMD_PIPELINE_RESERVE);
   std::string buffer;
 
-  std::vector<parse_mode> line_classifier=classify_token_regions(command_line);
+  std::vector<Parser::parse_mode> line_classifier=Parser::classify_token_regions(command_line);
   std::string canonical_line=preprocess_character_stream(command_line,line_classifier);
-  std::vector<parse_mode> canonical_classifer=classify_token_regions(canonical_line);
+  std::vector<Parser::parse_mode> canonical_classifer=Parser::classify_token_regions(canonical_line);
   assert(!canonical_line.empty());
   buffer.reserve(canonical_line.size());
   buffer.push_back(canonical_line[0]); //First character cannot be a pipe operator
   assert(canonical_line[0]!='|');
 
   for(size_t i=1;i<canonical_line.size();++i){
-    if(canonical_line[i]=='|' && canonical_line[i-1]!='\\' && canonical_classifer[i]==parse_mode::WHITESPACE){
+    if(canonical_line[i]=='|' && canonical_line[i-1]!='\\' && canonical_classifer[i]==Parser::parse_mode::WHITESPACE){
       //Delimiter reached
       command_pipeline.push_back(buffer);
       buffer.clear();
@@ -1599,6 +1618,8 @@ int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+  Shell_IO::copy_standard_streams();
+
   ignore_SIGINT_and_SIGTSTP();
 
   AutoComplete::init_completion();
@@ -1623,7 +1644,7 @@ int main() {
     std::string rawline(line_cstr);
     free(line_cstr);
 
-    std::string line=trim_leading_and_trailing_whitespace(rawline);
+    std::string line=Parser::trim_leading_and_trailing_whitespace(rawline);
 
     if(line.empty()){
       continue;
