@@ -509,6 +509,7 @@ namespace AutoComplete{
   std::string path=getenv("PATH"); //need to make dynamic since could be modified
   const std::vector<std::string> builtins={"cd","complete","declare","echo","exit","jobs","history","pwd","type"};
   const std::set<std::string> builtins_set=std::set<std::string>(builtins.begin(),builtins.end());
+  const std::set<std::string> read_builtins_set; //builtins that read from standard input (Not currently supported)
 
   std::map<std::string,std::string> custom_completer;
   int custom_start_invoke, custom_end_invoke=0; //Support the custom generator interaction with Readline API
@@ -1522,11 +1523,24 @@ void eval(const std::string & line){
   std::vector<std::string> line_tokens=Parser::parse_input(line);
 
   std::string read_input;
-  if(Shell_IO::in_pipeline){
+  if(Shell_IO::in_pipeline && AutoComplete::read_builtins_set.contains(line_tokens[0])){
     char buffer[BUFFER_MAX];
-    while(fgets(buffer,BUFFER_MAX,stdin)!=NULL){
-      read_input+=buffer;
+
+    FILE* input_file=fdopen(STDIN_FILENO,"r");
+
+    if(input_file!=NULL){
+      while(fgets(buffer,BUFFER_MAX,input_file)!=NULL){
+        read_input+=buffer;
+      }
+
+      if(fclose(input_file)){
+        print_errno_message();
+      }
     }
+    else{
+      print_errno_message();
+    }
+
   }
 
   Shell_IO::set_file_redirection(line_tokens);
@@ -1708,7 +1722,7 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
   }
 
   if(AutoComplete::builtins_set.contains(command_tokens[0])){
-    
+
     eval_tokens(command_tokens);
 
     if(close(previous_pipe_read_descriptor)==-1){
