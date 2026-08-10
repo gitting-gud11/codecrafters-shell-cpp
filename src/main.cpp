@@ -54,6 +54,7 @@ namespace Shell_IO{
   int stdin_copy=-1;
   int stdout_copy=-1;
   int stderr_copy=-1;
+  bool in_pipeline=false;
   
   std::vector<std::pair<int,int>> file_aliases;
 
@@ -1520,9 +1521,22 @@ void eval_tokens(const std::vector<std::string> & tokens){
 void eval(const std::string & line){
   std::vector<std::string> line_tokens=Parser::parse_input(line);
 
+  std::string read_input;
+  if(Shell_IO::in_pipeline){
+    char buffer[BUFFER_MAX];
+    while(fgets(buffer,BUFFER_MAX,stdin)!=NULL){
+      read_input+=buffer;
+    }
+  }
+
   Shell_IO::set_file_redirection(line_tokens);
 
   std::vector<std::string> command_tokens=Shell_IO::filter_redirection_commands(line_tokens);
+
+  if(!read_input.empty()){
+    std::vector<std::string> read_tokens=Parser::parse_input(Parser::trim_leading_and_trailing_whitespace(read_input));
+    command_tokens.insert(command_tokens.end(),read_tokens.begin(),read_tokens.end());
+  }
 
   eval_tokens(command_tokens);
 }
@@ -1694,7 +1708,8 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
   }
 
   if(AutoComplete::builtins_set.contains(command_tokens[0])){
-    //todo
+    
+    eval_tokens(command_tokens);
 
     if(close(previous_pipe_read_descriptor)==-1){
       print_errno_message();
@@ -1742,6 +1757,7 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
 }
 
 void eval_pipeline(const std::vector<std::string> & command_pipeline){
+  Shell_IO::in_pipeline=true; //Flag is relevant when executing the terminal command if it's a builtin
   std::vector<pid_t> child_processes;
   child_processes.reserve(command_pipeline.size());
   int previous_pipe_read_descriptor=STDIN_FILENO;
@@ -1776,6 +1792,7 @@ void eval_pipeline(const std::vector<std::string> & command_pipeline){
   for(auto &child:child_processes){
     waitpid(child,NULL,0);
   }
+  Shell_IO::in_pipeline=false;
 }
 
 int main() {
