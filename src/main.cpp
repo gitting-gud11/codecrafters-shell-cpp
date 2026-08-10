@@ -1633,9 +1633,22 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_args,std::
       return false;
     } //Need to add logic for error handling as well
     case 0:{
-      dup2(previous_pipe_read_descriptor,STDIN_FILENO);
-      dup2(pipe_file_descriptors[1],STDOUT_FILENO);
-      close(pipe_file_descriptors[1]);
+      //Redirect the read descriptor of previous pipe/child process to output of current child process
+      if(dup2(previous_pipe_read_descriptor,STDIN_FILENO)==-1){
+        print_errno_message();
+        exit(errno);
+      }
+
+      //Redirect the output of the current process to the write descriptor of its pipe
+      if(dup2(pipe_file_descriptors[1],STDOUT_FILENO)==-1){
+        print_errno_message();
+        exit(errno);
+      }
+
+      if(close(pipe_file_descriptors[1])==-1){
+        print_errno_message();
+        exit(errno);
+      }
 
       if(execvp(command_args[0],const_cast<char* const*>(command_args.data()))){
         print_errno_message();
@@ -1644,13 +1657,23 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_args,std::
       break;
     }
     default:{
+
       if(previous_pipe_read_descriptor){
-        close(previous_pipe_read_descriptor);
+        //Close the main process read end of the pipe now that child process
+        //has the information to redirect its standard input
+        if(close(previous_pipe_read_descriptor)==-1){
+          print_errno_message();
+          return false;
+        }
       }
-      previous_pipe_read_descriptor=pipe_file_descriptors[0];
-      close(pipe_file_descriptors[1]); //Write end not needed
+
+      previous_pipe_read_descriptor=pipe_file_descriptors[0]; //Store read end descriptor for subsequent command execution
+
+      if(close(pipe_file_descriptors[1])==-1){
+        print_errno_message();
+        return false;
+      }
       child_processes.push_back(pid);
-      break;
     }
   }
 
@@ -1659,12 +1682,27 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_args,std::
 
 void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<const char*> & command_args,std::vector<pid_t> & child_processes,int & previous_pipe_read_descriptor){
 
-  if(AutoComplete::builtins_set.contains(command_tokens[0])){
-    //todo
+  //Read pipe from previous command whether run in the parent process or spawn a child process
+  if(dup2(previous_pipe_read_descriptor,STDIN_FILENO)==-1){
+    print_errno_message();
     return;
   }
 
-  dup2(previous_pipe_read_descriptor,STDIN_FILENO);
+  if(AutoComplete::builtins_set.contains(command_tokens[0])){
+    //todo
+    
+    if(close(previous_pipe_read_descriptor)==-1){
+      print_errno_message();
+      return;
+    }
+
+    //Restore stdin
+    if(dup2(Shell_IO::stdin_copy,STDIN_FILENO)==-1){
+      print_errno_message();
+      return;
+    }    
+    return;
+  }
 
   pid_t pid;
   switch (pid=fork()){
@@ -1680,15 +1718,20 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
       break;
     }
     default:{
-      // close(pipe_file_descriptors[0]);
-      // close(pipe_file_descriptors[1]);
       child_processes.push_back(pid);
       break;
     }
   }
 
-  close(previous_pipe_read_descriptor);
-  dup2(Shell_IO::stdin_copy,STDIN_FILENO);
+  if(close(previous_pipe_read_descriptor)==-1){
+    print_errno_message();
+    return;
+  }
+
+  if(dup2(Shell_IO::stdin_copy,STDIN_FILENO)==-1){
+    print_errno_message();
+    return;
+  }
 
 }
 
