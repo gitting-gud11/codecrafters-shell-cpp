@@ -434,7 +434,7 @@ namespace JobsManager{
 
   }
 
-  std::optional<size_t> find_job_by_specifier(std::string & token){
+  std::optional<size_t> find_job_by_specifier(const std::string & token){
     size_t offset=1;
     if(token[0]!='%'){
       --offset;
@@ -474,7 +474,7 @@ namespace JobsManager{
     }
   }
 
-  void list_jobs(std::vector<std::string> & tokens){
+  void list_jobs(const std::vector<std::string> & tokens){
     if(tokens.size()==1){
       //Prompt was jobs
       JobsManager::print_all_running_jobs();
@@ -1469,15 +1469,8 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
   }
 }
 
+void eval_tokens(const std::vector<std::string> & tokens){
 
-void eval(const std::string & line){
-
-    std::vector<std::string> line_tokens=Parser::parse_input(line);
-
-    Shell_IO::set_file_redirection(line_tokens); //Might want to rename from all_tokens
-    //Think about rewrites a bit later
-
-    std::vector<std::string> tokens=Shell_IO::filter_redirection_commands(line_tokens);
 
     std::string command=get_command(tokens);
     //Compile time hasing. Might add a dispatch table at the end. Issue with dispatch table is not all command evals have the same arguments
@@ -1510,7 +1503,7 @@ void eval(const std::string & line){
       exit(0);
     }
     else{
-      //Want to check if I can execute the program
+      //Determine if command is executeable and execute if so
       std::optional<std::string> exec_path=find_exec_path(command,AutoComplete::path);
       if(exec_path.has_value()){
         run_program(exec_path.value(),tokens);
@@ -1521,6 +1514,17 @@ void eval(const std::string & line){
 
     }
 
+}
+
+
+void eval(const std::string & line){
+  std::vector<std::string> line_tokens=Parser::parse_input(line);
+
+  Shell_IO::set_file_redirection(line_tokens);
+
+  std::vector<std::string> command_tokens=Shell_IO::filter_redirection_commands(line_tokens);
+
+  eval_tokens(command_tokens);
 }
 
 inline bool is_background_job(const std::string & line){
@@ -1633,6 +1637,7 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_args,std::
       return false;
     } //Need to add logic for error handling as well
     case 0:{
+      restore_SIGINT_and_SIGTSTP();
       //Redirect the read descriptor of previous pipe/child process to output of current child process
       if(dup2(previous_pipe_read_descriptor,STDIN_FILENO)==-1){
         print_errno_message();
@@ -1690,7 +1695,7 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
 
   if(AutoComplete::builtins_set.contains(command_tokens[0])){
     //todo
-    
+
     if(close(previous_pipe_read_descriptor)==-1){
       print_errno_message();
       return;
@@ -1711,6 +1716,7 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
       return;
     }
     case 0:{
+      restore_SIGINT_and_SIGTSTP();
       if(execvp(command_args[0],const_cast<char* const*>(command_args.data()))){
         print_errno_message();
         exit(errno); //File descriptors closed when program terminates
