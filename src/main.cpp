@@ -1618,8 +1618,9 @@ std::vector<std::string> construct_command_pipeline(const std::string & command_
 }
 
 
-bool setup_intermediate_pipe(const std::vector<const char*> & command_tokens,std::vector<pid_t> & child_processes,int & read_descriptor){
+bool setup_intermediate_pipe(const std::vector<const char*> & command_args,std::vector<pid_t> & child_processes,int & previous_pipe_read_descriptor){
 
+  std::println("Entered intermediate pipe");
   int pipe_file_descriptors[2];
 
   if(pipe(pipe_file_descriptors)==-1){
@@ -1632,18 +1633,24 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_tokens,std
     case -1:{
       print_errno_message();
       return false;
-    }
+    } //Need to add logic for error handling as well
     case 0:{
-      dup2(pipe_file_descriptors[0],read_descriptor);
+      dup2(pipe_file_descriptors[0],previous_pipe_read_descriptor);
+      dup2(previous_pipe_read_descriptor,STDIN_FILENO);
+      // dup2(pipe_file_descriptors[0],STDIN_FILENO);
+      // dup2(pipe_file_descriptors[1],STDOUT_FILENO);
+      // dup2(pipe_file_descriptors[0],previous_pipe_write_descriptor);
+      // dup2(previous_pipe_write_descriptor,STDIN_FILENO);
+      // dup2(pipe_file_descriptors[1],STDOUT_FILENO);
 
-      if(execvp(command_tokens[0],const_cast<char* const*>(command_tokens.data()))){
+      if(execvp(command_args[0],const_cast<char* const*>(command_args.data()))){
         print_errno_message();
         exit(errno); //File descriptors closed when program terminates
       }
       break;
     }
     default:{
-      read_descriptor=pipe_file_descriptors[1];
+      previous_pipe_read_descriptor=pipe_file_descriptors[0];
       close(pipe_file_descriptors[0]);
       close(pipe_file_descriptors[1]);
       child_processes.push_back(pid);
@@ -1654,10 +1661,54 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_tokens,std
   return true;
 }
 
+void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<const char*> & command_args,std::vector<pid_t> & child_processes,int & previous_pipe_read_descriptor){
+
+  std::println("Entered terminal pipe");
+  if(AutoComplete::builtins_set.contains(command_tokens[0])){
+    //todo
+    return;
+  }
+
+  int pipe_file_descriptors[2];
+
+  if(pipe(pipe_file_descriptors)==-1){
+    print_errno_message();
+    return;
+  }
+
+  pid_t pid;
+  switch (pid=fork()){
+    case -1:{
+      print_errno_message();
+      return;
+    }
+    case 0:{
+      close(pipe_file_descriptors[1]); //Terminal process only reads from the pipe
+      // dup2(pipe_file_descriptors[0],previous_pipe_write_descriptor);
+      dup2(pipe_file_descriptors[0],previous_pipe_read_descriptor);
+      dup2(previous_pipe_read_descriptor,STDIN_FILENO);
+      // dup2(pipe_file_descriptors[1],STDOUT_FILENO);
+      //dupe the read_descriptor to the read section then dup that to stdin
+      if(execvp(command_args[0],const_cast<char* const*>(command_args.data()))){
+        print_errno_message();
+        exit(errno); //File descriptors closed when program terminates
+      }
+      break;
+    }
+    default:{
+      close(pipe_file_descriptors[0]);
+      close(pipe_file_descriptors[1]);
+      child_processes.push_back(pid);
+      break;
+    }
+  }
+
+}
+
 void eval_pipeline(const std::vector<std::string> & command_pipeline){
   std::vector<pid_t> child_processes;
   child_processes.reserve(command_pipeline.size());
-  int read_file_descriptor=STDIN_FILENO;
+  int previous_pipe_read_descriptor=STDIN_FILENO;
 
   std::vector<std::vector<std::string>> pipeline_tokens (command_pipeline.size());
   std::transform(command_pipeline.begin(),command_pipeline.end(),pipeline_tokens.begin(),
@@ -1679,10 +1730,12 @@ void eval_pipeline(const std::vector<std::string> & command_pipeline){
   for(size_t i=0;i<command_pipeline.size()-1;++i){
     //Modifies child_processes vector
     //Updates the read_file_descriptor for subsequent piping
-    if(!setup_intermediate_pipe(pipeline_exec_tokens[i],child_processes,read_file_descriptor)){
+    if(!setup_intermediate_pipe(pipeline_exec_tokens[i],child_processes,previous_pipe_read_descriptor)){
       break;
     }
   }
+
+  setup_terminal_pipe(pipeline_tokens[pipeline_tokens.size()-1],pipeline_exec_tokens[pipeline_exec_tokens.size()-1],child_processes,previous_pipe_read_descriptor);
 
   for(auto &child:child_processes){
     waitpid(child,NULL,0);
