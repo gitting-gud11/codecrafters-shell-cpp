@@ -1468,20 +1468,14 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
 
 
 void list_history(std::optional<int> num_entries){
+  int start_pos=(num_entries.has_value()) ? (history_length+1-num_entries.value()) : history_base; //+1 account for inclusive bound
 
-  int bound=(num_entries.has_value()) ? num_entries.value() : history_length;
+  start_pos=std::max(1,start_pos);
 
-  if(bound<0){
-    //error
-  }
-
-  bound=std::min(bound,history_length);
-
-  for(int i=history_base;i<=bound;++i){
+  for(int i=start_pos;i<=history_length;++i){
     HIST_ENTRY* entry=history_get(i); //Reference is received
-    std::println("{} {}",i,entry->line);
+    std::println("    {} {}",i,entry->line); //Padded with four spaces
   }
-  
 }
 
 void manage_and_report_history(const std::vector<std::string> & tokens){
@@ -1489,7 +1483,21 @@ void manage_and_report_history(const std::vector<std::string> & tokens){
   if(tokens.size()==1){
     //command is "history"
     list_history(std::nullopt);
+    return;
   }
+
+  bool argument_is_number=std::all_of(tokens[1].begin(),tokens[1].end(),::isdigit);
+  if(argument_is_number){
+    if(tokens.size()==2){
+      int entries_to_list=stoi(tokens[1]);
+      list_history(entries_to_list);
+    }
+    else{
+      std::println(stderr,"bash: history: too many arguments");
+    }
+    return;
+  }
+
 }
 
 void eval_tokens(const std::vector<std::string> & tokens){
