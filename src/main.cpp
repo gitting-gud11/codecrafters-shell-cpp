@@ -63,15 +63,15 @@ namespace Shell_IO{
 
     if((stdin_copy=dup(STDIN_FILENO))==-1){
       print_errno_message();
-      exit(errno);
+      std::exit(errno);
     }
     if((stdout_copy=dup(STDOUT_FILENO))==-1){
       print_errno_message();
-      exit(errno);
+      std::exit(errno);
     }
     if((stderr_copy=dup(STDERR_FILENO))==-1){
       print_errno_message();
-      exit(errno);
+      std::exit(errno);
     }
   }
 
@@ -1346,7 +1346,7 @@ void run_program(const std::string & pathname,const std::vector<std::string> & t
       //Child Process
       restore_SIGINT_and_SIGTSTP();
       if(execv(pathname.data(),const_cast<char* const*>(argv.data()))) print_errno_message();
-      exit(errno);
+      std::exit(errno);
       break;
     default:
       //Parent Process
@@ -1497,7 +1497,44 @@ void manage_and_report_history(const std::vector<std::string> & tokens){
     }
     return;
   }
+  
+  const std::string & history_flag_token=tokens[1];
+  assert(!history_flag_token.empty());
 
+  //history_flag_token cannot be empty
+  if(history_flag_token[0]!='-'){
+    std::println(stderr,"bash: history: {}: numeric argument required",history_flag_token);
+    return;
+  }
+
+  char flag=history_flag_token[1];
+  std::optional<std::string> file_opt=get_nth_token(tokens,2);
+  bool valid_flag=(flag=='r'||flag=='w'||flag=='a');
+
+  if(!valid_flag || history_flag_token.size()>3){
+    std::println(stderr,"bash: history: {} invalid option",history_flag_token);
+    std::println(stderr,"history: usage: history -anrw [filename]");
+    return;
+  }
+
+  std::string file=(file_opt.value_or(getenv("HISTFILE")));
+
+  if(flag=='r'){
+    //evaluates to 0 on success
+    if(read_history(file.data())){
+      print_errno_message();
+    }
+  }
+  else if(flag=='w'){
+    //evaluates to 0 on success
+    if(write_history(file.data())){
+      print_errno_message();
+    }
+
+  }
+  else if(flag=='a'){
+
+  }
 }
 
 void eval_tokens(const std::vector<std::string> & tokens){
@@ -1531,7 +1568,7 @@ void eval_tokens(const std::vector<std::string> & tokens){
       //Implement this
     }
     else if(command=="exit"){
-      exit(0);
+      std::exit(0);
     }
     else{
       //Determine if command is executeable and execute if so
@@ -1603,7 +1640,7 @@ void execute_background_job(const std::string & line){
   argv[tokens.size()]=NULL;
 
   if(execvp(argv[0],const_cast<char* const*>(argv.data()))) print_errno_message();
-  exit(errno);
+  std::exit(errno);
 }
 
 void eval_background(const std::string & line){
@@ -1698,23 +1735,23 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_args,std::
       //Redirect the read descriptor of previous pipe/child process to output of current child process
       if(dup2(previous_pipe_read_descriptor,STDIN_FILENO)==-1){
         print_errno_message();
-        exit(errno);
+        std::exit(errno);
       }
 
       //Redirect the output of the current process to the write descriptor of its pipe
       if(dup2(pipe_file_descriptors[1],STDOUT_FILENO)==-1){
         print_errno_message();
-        exit(errno);
+        std::exit(errno);
       }
 
       if(close(pipe_file_descriptors[1])==-1){
         print_errno_message();
-        exit(errno);
+        std::exit(errno);
       }
 
       if(execvp(command_args[0],const_cast<char* const*>(command_args.data()))){
         print_errno_message();
-        exit(errno); //File descriptors closed when program terminates
+        std::exit(errno); //File descriptors closed when program terminates
       }
       break;
     }
@@ -1777,7 +1814,7 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
       restore_SIGINT_and_SIGTSTP();
       if(execvp(command_args[0],const_cast<char* const*>(command_args.data()))){
         print_errno_message();
-        exit(errno); //File descriptors closed when program terminates
+        std::exit(errno); //File descriptors closed when program terminates
       }
       break;
     }
@@ -1853,6 +1890,7 @@ int main() {
 
   //Enable history
   using_history();
+  //Load history from HISTFILE environment variable
 
   while(1){
     Shell_IO::restore_file_redirection();
