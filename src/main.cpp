@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdio.h>
+#include <readline/history.h>
 #include <readline/readline.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -1354,12 +1355,6 @@ void run_program(const std::string & pathname,const std::vector<std::string> & t
   }
 }
 
-inline void print_path(const std::filesystem::path & input_path){
-
-  std::println("{}",input_path.string());
-}
-
-
 void change_directory(const std::vector<std::string> & tokens){
 
   std::string updated_directory;
@@ -1471,6 +1466,32 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
   }
 }
 
+
+void list_history(std::optional<int> num_entries){
+
+  int bound=(num_entries.has_value()) ? num_entries.value() : history_length;
+
+  if(bound<0){
+    //error
+  }
+
+  bound=std::min(bound,history_length);
+
+  for(int i=history_base;i<=bound;++i){
+    HIST_ENTRY* entry=history_get(i); //Reference is received
+    std::println("{} {}",i,entry->line);
+  }
+  
+}
+
+void manage_and_report_history(const std::vector<std::string> & tokens){
+
+  if(tokens.size()==1){
+    //command is "history"
+    list_history(std::nullopt);
+  }
+}
+
 void eval_tokens(const std::vector<std::string> & tokens){
 
 
@@ -1481,7 +1502,7 @@ void eval_tokens(const std::vector<std::string> & tokens){
     }
     else if(command=="pwd"){
       std::filesystem::path working_path=std::filesystem::current_path();
-      print_path(working_path);
+      std::println("{}",working_path.string());
     }
     else if(command=="echo"){
       echo_output(tokens);
@@ -1490,7 +1511,7 @@ void eval_tokens(const std::vector<std::string> & tokens){
       JobsManager::list_jobs(tokens);
     }
     else if(command=="history"){
-      //Implement this
+      manage_and_report_history(tokens);
     }
     else if(command=="type"){
       determine_type(tokens,AutoComplete::path);
@@ -1817,8 +1838,13 @@ int main() {
 
   ignore_SIGINT_and_SIGTSTP();
 
+  //Configure tab autocompletion
   AutoComplete::init_completion();
   rl_bind_key('\t',rl_complete);
+
+
+  //Enable history
+  using_history();
 
   while(1){
     Shell_IO::restore_file_redirection();
@@ -1837,6 +1863,9 @@ int main() {
     sigprocmask(SIG_SETMASK,&readline_restore,NULL);
 
     std::string rawline(line_cstr);
+    if(!rawline.empty()){
+      add_history(line_cstr);
+    }
     free(line_cstr);
 
     std::string line=Parser::trim_leading_and_trailing_whitespace(rawline);
@@ -1847,7 +1876,6 @@ int main() {
     else if(line[0]=='|'){
       std::println(stderr,"-bash: syntax error near unexpected token `|'");
       continue;
-
     }
 
     std::vector<std::string> command_pipeline=construct_command_pipeline(line);
