@@ -544,9 +544,7 @@ namespace HistoryManager{
       return errno;
     }
 
-    int start_pos=(history_offset==1) ? history_offset : history_offset+1;
-
-    for(int i=start_pos;i<=history_length;++i){
+    for(int i=history_offset;i<=history_length;++i){
       HIST_ENTRY* entry=history_get(i); //Reference is received
       std::string line=std::format("{}\n",entry->line); //Newline added
       if(write(append_fd,line.data(),line.size())==-1){
@@ -558,7 +556,9 @@ namespace HistoryManager{
       return errno;
     }
 
-    file_history_offsets[filename_cplus_str]=history_length;
+    //A subsequent command must have been executed, so this will be bounded by the history_length
+    //upon subsequent reentry
+    file_history_offsets[filename_cplus_str]=history_length+1;
     return 0;
 
   }
@@ -1612,132 +1612,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
   }
 }
 
-
-void list_history(std::optional<int> num_entries){
-  int start_pos=(num_entries.has_value()) ? (history_length+1-num_entries.value()) : history_base; //+1 account for inclusive bound
-
-  start_pos=std::max(1,start_pos);
-
-  for(int i=start_pos;i<=history_length;++i){
-    HIST_ENTRY* entry=history_get(i); //Reference is received
-    std::println("    {} {}",i,entry->line); //Padded with four spaces
-  }
-}
-
-
-//Appends commands that have been executed since last append operation
-//Issues encountered attempting to use the GNU History utilites to move around the history list
-int append_history(const char* filename){
-  static std::map<std::string,int> file_history_offsets;
-  const std::string filename_cplus_str=std::string(filename);
-
-  auto[iterator,insertion_occurred]=file_history_offsets.try_emplace(filename_cplus_str,1);
-
-  int history_offset=insertion_occurred ? 1 : iterator->second;
-
-  const char* append_file=(filename!=NULL) ? filename : getenv("HISTFILE");
-  
-  int append_fd;
-  if((append_fd=open(append_file,O_WRONLY|O_APPEND))==-1){
-    return errno;
-  }
-
-  int start_pos=(history_offset==1) ? history_offset : history_offset+1;
-
-  for(int i=start_pos;i<=history_length;++i){
-    HIST_ENTRY* entry=history_get(i); //Reference is received
-    std::string line=std::format("{}\n",entry->line); //Newline added
-    if(write(append_fd,line.data(),line.size())==-1){
-      return errno;
-    }
-  }
-
-  if(close(append_fd)==-1){
-    return errno;
-  }
-
-  file_history_offsets[filename_cplus_str]=history_length;
-  return 0;
-
-}
-
-void manage_and_report_history(const std::vector<std::string> & tokens){
-
-  if(tokens.size()==1){
-    //command is "history"
-    list_history(std::nullopt);
-    return;
-  }
-
-  bool argument_is_number=std::all_of(tokens[1].begin(),tokens[1].end(),::isdigit);
-  if(argument_is_number){
-    if(tokens.size()==2){
-      int entries_to_list=stoi(tokens[1]);
-      list_history(entries_to_list);
-    }
-    else{
-      std::println(stderr,"bash: history: too many arguments");
-    }
-    return;
-  }
-  
-  const std::string & history_flag_token=tokens[1];
-  assert(!history_flag_token.empty());
-
-  //history_flag_token cannot be empty
-  if(history_flag_token[0]!='-'){
-    std::println(stderr,"bash: history: {}: numeric argument required",history_flag_token);
-    return;
-  }
-
-  char flag=history_flag_token[1];
-  std::optional<std::string> file_opt=get_nth_token(tokens,2);
-  bool valid_flag=(flag=='r'||flag=='w'||flag=='a');
-
-  if(!valid_flag || history_flag_token.size()>3){
-    std::println(stderr,"bash: history: {} invalid option",history_flag_token);
-    std::println(stderr,"history: usage: history -anrw [filename]");
-    return;
-  }
-  
-  std::string file;
-  if(file_opt.has_value()){
-    file=file_opt.value();
-  }
-  else{
-    char* histfile=getenv("HISTFILE");
-    //No file is available for attempting to execute the command
-    if(histfile==NULL){
-      return;
-    }
-    else{
-      file=std::string(histfile);
-    }
-  }
-
-  if(flag=='r'){
-    //evaluates to 0 on success
-    if(read_history(file.data())){
-      print_errno_message();
-    }
-  }
-  else if(flag=='w'){
-    //evaluates to 0 on success
-    if(write_history(file.data())){
-      print_errno_message();
-    }
-
-  }
-  else if(flag=='a'){
-    //evaluates to 0 on success
-    if(append_history(file.data())){
-      print_errno_message();
-    }
-  }
-}
-
 void eval_tokens(const std::vector<std::string> & tokens){
-
 
     std::string command=get_command(tokens);
     //Compile time hasing. Might add a dispatch table at the end. Issue with dispatch table is not all command evals have the same arguments
