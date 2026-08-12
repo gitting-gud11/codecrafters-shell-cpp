@@ -1553,8 +1553,21 @@ void manage_and_report_history(const std::vector<std::string> & tokens){
     std::println(stderr,"history: usage: history -anrw [filename]");
     return;
   }
-
-  std::string file=(file_opt.value_or(getenv("HISTFILE")));
+  
+  std::string file;
+  if(file_opt.has_value()){
+    file=file_opt.value();
+  }
+  else{
+    char* histfile=getenv("HISTFILE");
+    //No file is available for attempting to execute the command
+    if(histfile==NULL){
+      return;
+    }
+    else{
+      file=std::string(histfile);
+    }
+  }
 
   if(flag=='r'){
     //evaluates to 0 on success
@@ -1570,6 +1583,7 @@ void manage_and_report_history(const std::vector<std::string> & tokens){
 
   }
   else if(flag=='a'){
+    //evaluates to 0 on success
     if(append_history(file.data())){
       print_errno_message();
     }
@@ -1607,7 +1621,17 @@ void eval_tokens(const std::vector<std::string> & tokens){
       //Implement this
     }
     else if(command=="exit"){
-      std::exit(0);
+      char* histfile=std::getenv("HISTFILE");
+
+      //append_history returns 0 on success
+      if(histfile==NULL || !append_history(histfile)){
+        std::exit(0);
+      }
+      else{
+        print_errno_message();
+        std::exit(errno);
+      }
+
     }
     else{
       //Determine if command is executeable and execute if so
@@ -1930,14 +1954,10 @@ int main() {
   //Enable history
   using_history();
 
-  // //Retrieve HISTFILE environment variable
-  // if(setenv("HISTFILE","~/.bash_history",0)==-1){ //Do not overwrite environment variable
-  //   print_errno_message();
-  //   exit(errno);
-  // }
+  // //Load history from HISTFILE environment variable
+  // char* histfile=std::getenv("HISTFILE");
 
-  // // //Load history from HISTFILE environment variable
-  // if(read_history(std::getenv("HISTFILE"))){
+  // if(histfile!=NULL && read_history(histfile)){
   //   //Evaluates to non-zero when error occurs
   //   print_errno_message();
   //   exit(errno);
