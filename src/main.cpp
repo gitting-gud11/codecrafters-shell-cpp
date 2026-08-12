@@ -1482,13 +1482,12 @@ void list_history(std::optional<int> num_entries){
 //Appends commands that have been executed since last append operation
 //Issues encountered attempting to use the GNU History utilites to move around the history list
 int append_history(const char* filename){
-  static bool offset_initialized=false;
-  static int history_offset;
+  static std::map<std::string,int> file_history_offsets;
+  const std::string filename_cplus_str=std::string(filename);
 
-  if(!offset_initialized){
-    history_offset=1;
-    offset_initialized=true;
-  }
+  auto[iterator,insertion_occurred]=file_history_offsets.try_emplace(filename_cplus_str,1);
+
+  int history_offset=insertion_occurred ? 1 : iterator->second;
 
   const char* append_file=(filename!=NULL) ? filename : getenv("HISTFILE");
   
@@ -1511,7 +1510,7 @@ int append_history(const char* filename){
     return errno;
   }
 
-  history_offset=history_length;
+  file_history_offsets[filename_cplus_str]=history_length;
   return 0;
 
 }
@@ -1937,7 +1936,7 @@ int main() {
   //   exit(errno);
   // }
 
-  // //Load history from HISTFILE environment variable
+  // // //Load history from HISTFILE environment variable
   // if(read_history(std::getenv("HISTFILE"))){
   //   //Evaluates to non-zero when error occurs
   //   print_errno_message();
