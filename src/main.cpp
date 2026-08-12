@@ -498,6 +498,152 @@ namespace JobsManager{
   }
 };
 
+namespace HistoryManager{
+    std::map<std::string,int> file_history_offsets;
+
+
+    bool init_history_tracking(void){
+      //Enable history
+      using_history();
+
+      //Load history form HISTFILE environment variable
+      char* histfile=std::getenv("HISTFILE");
+      bool history_loaded=!read_history(histfile); //read_history evaluates to 0 on success
+
+      if(histfile!=NULL){
+        file_history_offsets[std::string(histfile)]=history_length+1;
+      }
+      return history_loaded;
+
+    }
+
+    void list_history(std::optional<int> num_entries){
+    int start_pos=(num_entries.has_value()) ? (history_length+1-num_entries.value()) : history_base; //+1 account for inclusive bound
+
+    start_pos=std::max(1,start_pos);
+
+    for(int i=start_pos;i<=history_length;++i){
+      HIST_ENTRY* entry=history_get(i); //Reference is received
+      std::println("    {} {}",i,entry->line); //Padded with four spaces
+    }
+  }
+
+  //Appends commands that have been executed since last append operation
+  //Issues encountered attempting to use the GNU History utilites to move around the history list
+  int append_history(const char* filename){
+    const std::string filename_cplus_str=std::string(filename);
+
+    auto[iterator,insertion_occurred]=file_history_offsets.try_emplace(filename_cplus_str,1);
+
+    int history_offset=insertion_occurred ? 1 : iterator->second;
+
+    const char* append_file=(filename!=NULL) ? filename : getenv("HISTFILE");
+    
+    int append_fd;
+    if((append_fd=open(append_file,O_WRONLY|O_APPEND))==-1){
+      return errno;
+    }
+
+    int start_pos=(history_offset==1) ? history_offset : history_offset+1;
+
+    for(int i=start_pos;i<=history_length;++i){
+      HIST_ENTRY* entry=history_get(i); //Reference is received
+      std::string line=std::format("{}\n",entry->line); //Newline added
+      if(write(append_fd,line.data(),line.size())==-1){
+        return errno;
+      }
+    }
+
+    if(close(append_fd)==-1){
+      return errno;
+    }
+
+    file_history_offsets[filename_cplus_str]=history_length;
+    return 0;
+
+  }
+  void manage_and_report_history(const std::vector<std::string> & tokens){
+
+    if(tokens.size()==1){
+      //command is "history"
+      list_history(std::nullopt);
+      return;
+    }
+
+    bool argument_is_number=std::all_of(tokens[1].begin(),tokens[1].end(),::isdigit);
+    if(argument_is_number){
+      if(tokens.size()==2){
+        int entries_to_list=stoi(tokens[1]);
+        list_history(entries_to_list);
+      }
+      else{
+        std::println(stderr,"bash: history: too many arguments");
+      }
+      return;
+    }
+    
+    const std::string & history_flag_token=tokens[1];
+    assert(!history_flag_token.empty());
+
+    //history_flag_token cannot be empty
+    if(history_flag_token[0]!='-'){
+      std::println(stderr,"bash: history: {}: numeric argument required",history_flag_token);
+      return;
+    }
+
+    char flag=history_flag_token[1];
+    std::optional<std::string> file_opt=get_nth_token(tokens,2);
+    bool valid_flag=(flag=='r'||flag=='w'||flag=='a');
+
+    if(!valid_flag || history_flag_token.size()>3){
+      std::println(stderr,"bash: history: {} invalid option",history_flag_token);
+      std::println(stderr,"history: usage: history -anrw [filename]");
+      return;
+    }
+    
+    std::string file;
+    if(file_opt.has_value()){
+      file=file_opt.value();
+    }
+    else{
+      char* histfile=getenv("HISTFILE");
+      //No file is available for attempting to execute the command
+      if(histfile==NULL){
+        return;
+      }
+      else{
+        file=std::string(histfile);
+      }
+    }
+
+    if(flag=='r'){
+      //evaluates to 0 on success
+      if(read_history(file.data())){
+        print_errno_message();
+      }
+    }
+    else if(flag=='w'){
+      //evaluates to 0 on success
+      if(write_history(file.data())){
+        print_errno_message();
+      }
+
+    }
+    else if(flag=='a'){
+      //evaluates to 0 on success
+      if(append_history(file.data())){
+        print_errno_message();
+      }
+    }
+  }
+
+  inline bool save_history_on_exit(void){
+    char* histfile=std::getenv("HISTFILE");
+    //append_history returns non-zero when error encountered
+    return (histfile!=NULL && append_history(histfile));
+    }
+};
+
 namespace AutoComplete{
   //Maybe pull out the struct stuff and make it a class? Add a constructor which contains the data that I want
   //Trie for the path seems quite similar
@@ -1609,7 +1755,7 @@ void eval_tokens(const std::vector<std::string> & tokens){
       JobsManager::list_jobs(tokens);
     }
     else if(command=="history"){
-      manage_and_report_history(tokens);
+      HistoryManager::manage_and_report_history(tokens);
     }
     else if(command=="type"){
       determine_type(tokens,AutoComplete::path);
@@ -1621,12 +1767,7 @@ void eval_tokens(const std::vector<std::string> & tokens){
       //Implement this
     }
     else if(command=="exit"){
-      char* histfile=std::getenv("HISTFILE");
-
-      //append_history returns non-zero when error encountered
-      if(histfile!=NULL && append_history(histfile)){
-        print_errno_message();
-      }
+      HistoryManager::save_history_on_exit();
       std::exit(0);
     }
     else{
@@ -1946,13 +2087,7 @@ int main() {
   AutoComplete::init_completion();
   rl_bind_key('\t',rl_complete);
 
-
-  //Enable history
-  using_history();
-
-  // //Load history from HISTFILE environment variable
-  char* histfile=std::getenv("HISTFILE");
-  read_history(histfile);
+  HistoryManager::init_history_tracking();
 
   while(1){
     Shell_IO::restore_file_redirection();
