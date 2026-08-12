@@ -1478,6 +1478,44 @@ void list_history(std::optional<int> num_entries){
   }
 }
 
+
+//Appends commands that have been executed since last append operation
+//Issues encountered attempting to use the GNU History utilites to move around the history list
+int append_history(const char* filename){
+  static bool offset_initialized=false;
+  static int history_offset;
+
+  if(!offset_initialized){
+    history_offset=1;
+    offset_initialized=true;
+  }
+
+  const char* append_file=(filename!=NULL) ? filename : getenv("HISTFILE");
+  
+  int append_fd;
+  if((append_fd=open(append_file,O_WRONLY|O_APPEND))==-1){
+    return errno;
+  }
+
+  int start_pos=(history_offset==1) ? history_offset : history_offset+1;
+
+  for(int i=start_pos;i<=history_length;++i){
+    HIST_ENTRY* entry=history_get(i); //Reference is received
+    std::string line=std::format("{}\n",entry->line); //Newline added
+    if(write(append_fd,line.data(),line.size())==-1){
+      return errno;
+    }
+  }
+
+  if(close(append_fd)==-1){
+    return errno;
+  }
+
+  history_offset=history_length;
+  return 0;
+
+}
+
 void manage_and_report_history(const std::vector<std::string> & tokens){
 
   if(tokens.size()==1){
@@ -1533,7 +1571,9 @@ void manage_and_report_history(const std::vector<std::string> & tokens){
 
   }
   else if(flag=='a'){
-
+    if(append_history(file.data())){
+      print_errno_message();
+    }
   }
 }
 
@@ -1890,7 +1930,19 @@ int main() {
 
   //Enable history
   using_history();
-  //Load history from HISTFILE environment variable
+
+  // //Retrieve HISTFILE environment variable
+  // if(setenv("HISTFILE","~/.bash_history",0)==-1){ //Do not overwrite environment variable
+  //   print_errno_message();
+  //   exit(errno);
+  // }
+
+  // //Load history from HISTFILE environment variable
+  // if(read_history(std::getenv("HISTFILE"))){
+  //   //Evaluates to non-zero when error occurs
+  //   print_errno_message();
+  //   exit(errno);
+  // }
 
   while(1){
     Shell_IO::restore_file_redirection();
