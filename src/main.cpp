@@ -1623,15 +1623,11 @@ void eval_tokens(const std::vector<std::string> & tokens){
     else if(command=="exit"){
       char* histfile=std::getenv("HISTFILE");
 
-      //append_history returns 0 on success
-      if(histfile==NULL || !append_history(histfile)){
-        std::exit(0);
-      }
-      else{
+      //append_history returns non-zero when error encountered
+      if(histfile!=NULL && append_history(histfile)){
         print_errno_message();
-        std::exit(errno);
       }
-
+      std::exit(0);
     }
     else{
       //Determine if command is executeable and execute if so
@@ -1955,13 +1951,8 @@ int main() {
   using_history();
 
   // //Load history from HISTFILE environment variable
-  // char* histfile=std::getenv("HISTFILE");
-
-  // if(histfile!=NULL && read_history(histfile)){
-  //   //Evaluates to non-zero when error occurs
-  //   print_errno_message();
-  //   exit(errno);
-  // }
+  char* histfile=std::getenv("HISTFILE");
+  read_history(histfile);
 
   while(1){
     Shell_IO::restore_file_redirection();
