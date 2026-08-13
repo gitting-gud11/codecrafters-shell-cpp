@@ -55,7 +55,6 @@ namespace Shell_IO{
   int stdin_copy=-1;
   int stdout_copy=-1;
   int stderr_copy=-1;
-  bool in_pipeline=false;
   
   std::vector<std::pair<int,int>> file_aliases;
 
@@ -1714,7 +1713,7 @@ void configure_custom_completer(const std::vector<std::string> & tokens){
 void eval_tokens(const std::vector<std::string> & tokens){
 
     std::string command=get_command(tokens);
-    //Compile time hasing. Might add a dispatch table at the end. Issue with dispatch table is not all command evals have the same arguments
+    //Compile time hashing. Might add a dispatch table at the end. Issue with dispatch table is not all command evals have the same arguments
     if(command=="cd"){
       change_directory(tokens);
     }
@@ -1762,35 +1761,9 @@ void eval_tokens(const std::vector<std::string> & tokens){
 void eval(const std::string & line){
   std::vector<std::string> line_tokens=Parser::parse_input(line);
 
-  std::string read_input;
-  if(Shell_IO::in_pipeline && AutoComplete::read_builtins_set.contains(line_tokens[0])){
-    char buffer[BUFFER_MAX];
-
-    FILE* input_file=fdopen(STDIN_FILENO,"r");
-
-    if(input_file!=NULL){
-      while(fgets(buffer,BUFFER_MAX,input_file)!=NULL){
-        read_input+=buffer;
-      }
-
-      if(fclose(input_file)){
-        print_errno_message();
-      }
-    }
-    else{
-      print_errno_message();
-    }
-
-  }
-
   Shell_IO::set_file_redirection(line_tokens);
 
   std::vector<std::string> command_tokens=Shell_IO::filter_redirection_commands(line_tokens);
-
-  if(!read_input.empty()){
-    std::vector<std::string> read_tokens=Parser::parse_input(Parser::trim_leading_and_trailing_whitespace(read_input));
-    command_tokens.insert(command_tokens.end(),read_tokens.begin(),read_tokens.end());
-  }
 
   eval_tokens(command_tokens);
 }
@@ -1953,7 +1926,8 @@ bool setup_intermediate_pipe(const std::vector<const char*> & command_args,std::
   return true;
 }
 
-void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<const char*> & command_args,std::vector<pid_t> & child_processes,int & previous_pipe_read_descriptor){
+void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<const char*> & command_args,std::vector<pid_t> & child_processes,int & previous_pipe_read_descriptor,
+bool possible_parameter_expansion){
 
   //Read pipe from previous command whether run in the parent process or spawn a child process
   if(dup2(previous_pipe_read_descriptor,STDIN_FILENO)==-1){
@@ -2010,8 +1984,7 @@ void setup_terminal_pipe(std::vector<std::string> & command_tokens,std::vector<c
 
 }
 
-void eval_pipeline(const std::vector<std::string> & command_pipeline){
-  Shell_IO::in_pipeline=true; //Flag is relevant when executing the terminal command if it's a builtin
+void eval_pipeline(const std::vector<std::string> & command_pipeline, bool possible_parameter_expansion){
   std::vector<pid_t> child_processes;
   child_processes.reserve(command_pipeline.size());
   int previous_pipe_read_descriptor=STDIN_FILENO;
@@ -2041,12 +2014,11 @@ void eval_pipeline(const std::vector<std::string> & command_pipeline){
     }
   }
 
-  setup_terminal_pipe(pipeline_tokens[pipeline_tokens.size()-1],pipeline_exec_tokens[pipeline_exec_tokens.size()-1],child_processes,previous_pipe_read_descriptor);
+  setup_terminal_pipe(pipeline_tokens[pipeline_tokens.size()-1],pipeline_exec_tokens[pipeline_exec_tokens.size()-1],child_processes,previous_pipe_read_descriptor,possible_parameter_expansion);
 
   for(auto &child:child_processes){
     waitpid(child,NULL,0);
   }
-  Shell_IO::in_pipeline=false;
 }
 
 int main() {
@@ -2094,12 +2066,12 @@ int main() {
       std::println(stderr,"-bash: syntax error near unexpected token `|'");
       continue;
     }
-
+    
     std::vector<std::string> command_pipeline=construct_command_pipeline(line);
 
     if(command_pipeline.size()>1){
       //Evaluate the sequence of commands
-      eval_pipeline(command_pipeline);
+      eval_pipeline(command_pipeline,Parameter_Expansion::may_have_parameter_expansion(line));
     }
     else if(is_background_job(line)){
       eval_background(line);
