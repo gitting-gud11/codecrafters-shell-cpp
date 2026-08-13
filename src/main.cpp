@@ -1504,7 +1504,7 @@ namespace Parameter_Expansion{
 
   inline std::string map_to_binding(const std::string & key){
     auto iterator=shell_bindings.find(key);
-    return iterator!=shell_bindings.end() ? iterator->second : "";
+    return iterator!=shell_bindings.end() ? iterator->second : std::string{};
   }
 
   std::optional<std::string> perform_substitution(const std::string & token){
@@ -1574,11 +1574,12 @@ namespace Parameter_Expansion{
     for(auto &token:tokens){
       assert(token.size()!=0);
       std::optional<std::string> substitution_opt=perform_substitution(token);
-      if(substitution_opt.has_value()){
-        substituted_tokens.push_back(substitution_opt.value());
-      }
-      else{
+      if(!substitution_opt.has_value()){
         return std::nullopt;
+      }
+      const std::string & substitution=substitution_opt.value();
+      if(!substitution.empty()){
+        substituted_tokens.push_back(substitution); //Invariant that well-formed tokens are empty
       }
     }
 
