@@ -1512,16 +1512,56 @@ namespace Parameter_Expansion{
     if(token.size()==1){
       return token;
     }
-    std::string result;
-    result.reserve(token.size());
 
-    for(size_t i=0;i<token.size();++i){
-      if(token[i]=='$'){
-        result+=map_to_binding(token.substr(i+1));
+    //Cannot have an empty bracket
+    for(size_t i=0;i<token.size()-2;++i){
+      if(token[i]=='$' && token[i+1]=='{' && token[i+2]=='}'){
+        return std::nullopt;
+      }
+    }
+    
+    std::string result;
+    std::string key;
+    result.reserve(token.size());
+    key.reserve(token.size());
+    bool paren_open=false;
+
+    for(size_t i=1;i<=token.size();++i){
+      if(i==token.size()){
+        if(paren_open){
+          return std::nullopt; //parentheses was not closed
+        }
+        else{
+          result.push_back(token[i-1]);
+        }
+      }
+      else if(token[i-1]=='$' && token[i]=='{'){
+        if(paren_open){
+          return std::nullopt; //attempting to open a nested parentheses
+        }
+        else{
+          paren_open=true;
+          ++i; //Do not want to insert '{'
+        }
+      }
+      else if(token[i-1]=='$' && token[i]!='{'){
+        result+=map_to_binding(token.substr(i)); //remaining suffix is a shell variable
         break;
       }
+      else if(paren_open && token[i]=='}'){
+        key.push_back(token[i-1]); //Add the closing character before substituition. Assumption is that prior character not a closing bracket
+        result+=map_to_binding(key); //parentheses was closed
+        key.clear();
+        paren_open=false;
+        ++i; //Want to skip attempted insertion of '}'
+      }
       else{
-        result.push_back(token[i]);
+        if(paren_open){
+          key.push_back(token[i-1]);
+        }
+        else{
+          result.push_back(token[i-1]);
+        }
       }
     }
     return result;
@@ -1811,7 +1851,7 @@ void eval(const std::string & line){
       line_tokens=substituted_tokens_opt.value();
     }
     else{
-      std::println(stderr,"{}: unmatched parentheses in variable expansion",line);
+      std::println(stderr,"{}: unmatched parentheses in variable expansion or missing variable in parentheses",line);
       return;
     }
 
@@ -1996,7 +2036,7 @@ bool possible_parameter_expansion){
     substituted_tokens_opt=Parameter_Expansion::substitute_shell_variables(command_tokens);
 
     if(!substituted_tokens_opt.has_value()){
-      std::println(stderr,"Unmatched parentheses in variable expansion for terminal command in pipeline");
+      std::println(stderr,"Unmatched parentheses in variable expansion or missing variable in parentheses for terminal command in pipeline");
     }
     return;
   }
