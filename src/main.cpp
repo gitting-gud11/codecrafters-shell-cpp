@@ -1502,6 +1502,49 @@ namespace Parameter_Expansion{
     }
   }
 
+  inline std::string map_to_binding(const std::string & key){
+    auto iterator=shell_bindings.find(key);
+    return iterator!=shell_bindings.end() ? iterator->second : "";
+  }
+
+  std::optional<std::string> perform_substitution(const std::string & token){
+    assert(token.size()>1);
+    if(token.size()==1){
+      return token;
+    }
+    std::string result;
+    result.reserve(token.size());
+
+    for(size_t i=0;i<token.size();++i){
+      if(token[i]=='$'){
+        result+=map_to_binding(token.substr(i+1));
+        break;
+      }
+      else{
+        result.push_back(token[i]);
+      }
+    }
+    return result;
+  }
+
+  std::optional<std::vector<std::string>> substitute_shell_variables(const std::vector<std::string> & tokens){
+    std::vector<std::string> substituted_tokens;
+    substituted_tokens.reserve(tokens.size());
+
+    for(auto &token:tokens){
+      assert(token.size()!=0);
+      std::optional<std::string> substitution_opt=perform_substitution(token);
+      if(substitution_opt.has_value()){
+        substituted_tokens.push_back(substitution_opt.value());
+      }
+      else{
+        return std::nullopt;
+      }
+    }
+
+    return substituted_tokens;
+  }
+
 };
 
 inline std::string get_command(const std::vector<std::string> & tokens){
@@ -1761,6 +1804,19 @@ void eval_tokens(const std::vector<std::string> & tokens){
 void eval(const std::string & line){
   std::vector<std::string> line_tokens=Parser::parse_input(line);
 
+  if(Parameter_Expansion::may_have_parameter_expansion(line)){
+    std::optional<std::vector<std::string>> substituted_tokens_opt=Parameter_Expansion::substitute_shell_variables(line_tokens);
+
+    if(substituted_tokens_opt.has_value()){
+      line_tokens=substituted_tokens_opt.value();
+    }
+    else{
+      std::println(stderr,"{}: unmatched parentheses in variable expansion",line);
+      return;
+    }
+
+  }
+
   Shell_IO::set_file_redirection(line_tokens);
 
   std::vector<std::string> command_tokens=Shell_IO::filter_redirection_commands(line_tokens);
@@ -1935,9 +1991,22 @@ bool possible_parameter_expansion){
     return;
   }
 
+  std::optional<std::vector<std::string>> substituted_tokens_opt;
+  if(possible_parameter_expansion){
+    substituted_tokens_opt=Parameter_Expansion::substitute_shell_variables(command_tokens);
+
+    if(!substituted_tokens_opt.has_value()){
+      std::println(stderr,"Unmatched parentheses in variable expansion for terminal command in pipeline");
+    }
+    return;
+  }
+
+  std::vector<std::string> & tokens=possible_parameter_expansion ? (substituted_tokens_opt.value()) : command_tokens;
+
   if(AutoComplete::builtins_set.contains(command_tokens[0])){
 
-    eval_tokens(command_tokens);
+
+    eval_tokens(tokens);
 
     if(close(previous_pipe_read_descriptor)==-1){
       print_errno_message();
