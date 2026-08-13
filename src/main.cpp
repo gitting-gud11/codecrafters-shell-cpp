@@ -1435,6 +1435,10 @@ namespace Parameter_Expansion{
     return std::isalpha(c) || c=='_';
   }
 
+  inline bool well_formed_left_expression_character(char c){
+    return std::isalnum(c) || c=='_';
+  }
+
   std::optional<std::pair<std::string,std::string>> parse_expression(const std::string & expression){
     assert(!expression.empty());
     std::string left_value;
@@ -1453,7 +1457,7 @@ namespace Parameter_Expansion{
         right_value_start=i+1;
         break;
       }
-      if(std::isalnum(expression[i])){
+      if(well_formed_left_expression_character(expression[i])){
         left_value.push_back(expression[i]);
       }
       else{
