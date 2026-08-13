@@ -1404,7 +1404,102 @@ std::vector<std::string> parse_input(const std::string & input){
   return command_line_arguments;
  
 }
-}
+};
+
+namespace Parameter_Expansion{
+  std::map<std::string,std::string> shell_bindings;
+
+  inline bool may_have_parameter_expansion(const std::string & command){
+    return std::find(command.begin(),command.end(),'$') !=command.end();
+  }
+
+  void print_bindings(const std::optional<std::string> &shell_variable_opt){
+    if(shell_variable_opt.has_value()){
+      const std::string & shell_variable=shell_variable_opt.value();
+      auto iterator=shell_bindings.find(shell_variable);
+      if(iterator!=shell_bindings.end()){
+        std::println("declare -- {}=\"{}\"",shell_variable,iterator->second);
+      }
+      else{
+        std::println("declare: {}: not found",shell_variable);
+      }
+      return;
+    }
+
+    for(auto iterator=shell_bindings.begin();iterator!=shell_bindings.end();++iterator){
+        std::println("declare -- {}=\"{}\"",iterator->first,iterator->second);
+    }
+  }
+
+  inline bool well_formed_starting_character(char c){
+    return std::isalpha(c) || c=='_';
+  }
+
+  std::optional<std::pair<std::string,std::string>> parse_expression(const std::string & expression){
+    assert(!expression.empty());
+    std::string left_value;
+    std::string right_value;
+    left_value.reserve(expression.size());
+    right_value.reserve(expression.size());
+    size_t right_value_start;
+
+    if(!well_formed_starting_character(expression[0])){
+      return std::nullopt;
+    }
+
+    for(size_t i=0;i<expression.size();++i){
+      //Cannot be the first character from condiitonal prior to loop entry
+      if(expression[i]=='='){
+        right_value_start=i+1;
+        break;
+      }
+      if(std::isalnum(expression[i])){
+        left_value.push_back(expression[i]);
+      }
+      else{
+        return std::nullopt;
+      }
+
+    }
+
+    for(size_t i=right_value_start;i<expression.size();++i){
+      right_value.push_back(expression[i]);
+    }
+
+    return std::pair{left_value,right_value};
+  }
+
+  void bind_shell_variable(const std::string & expression){
+    std::optional<std::pair<std::string,std::string>> parsed_expression=parse_expression(expression);
+
+    if(parsed_expression.has_value()){
+      auto [left_value,right_value]=parsed_expression.value();
+      shell_bindings[left_value]=right_value;
+    }
+    else{
+      std::println(stderr,"declare: `{}\': not a valid identifier",expression);
+    }
+  }
+
+  void report_and_maintain_bindings(const std::vector<std::string> & tokens){
+    if(tokens.size()==1){
+      print_bindings(std::nullopt);
+    }
+    else if(tokens[1]=="-p"){
+      //Skip the flag token, i=2
+      for(size_t i=2;i<tokens.size();++i){
+        print_bindings(tokens[i]);
+      }
+    }
+    else{
+      //Attempt binding on token[1] since it is not flag, i=1
+      for(size_t i=1;i<tokens.size();++i){
+        bind_shell_variable(tokens[i]);
+      }
+    }
+  }
+
+};
 
 inline std::string get_command(const std::vector<std::string> & tokens){
   std::string command;
@@ -1639,7 +1734,7 @@ void eval_tokens(const std::vector<std::string> & tokens){
       configure_custom_completer(tokens);
     }
     else if(command=="declare"){
-      //Implement this
+      Parameter_Expansion::report_and_maintain_bindings(tokens);
     }
     else if(command=="exit"){
       HistoryManager::save_history_on_exit();
