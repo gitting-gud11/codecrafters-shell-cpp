@@ -1,3 +1,20 @@
+Parsing of Special Characters "$ and |":
+Current implementation does not properly escape $ and |
+Refactor the parsing logic to first check for the presence of special characters:{',",$,|,\}
+Parsing would first check the existence of a special character if not can use stringstream and getline
+Similar process can be applied if there are no quote characters
+Have the return type std::optional<std::vector<std::vector<std::string>>
+Absence of value indicates parsing error
+Size of one indicates only one command no pipelining otherwise there is one
+
+Parsing Order Outline:
+-Check for presence of special characters
+-Parse on quote characters if they exist
+-Parse on the pipe operator
+-Parse on $ operator
+-Perform merging
+
+
 Dynamic Maintenance of Path:
 Consider rechecking the path everytime aftr the type command
 Involve considerations to revising the prefix-tree
